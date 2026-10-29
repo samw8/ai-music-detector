@@ -154,7 +154,7 @@ class MelResNet:
         s = Path(path).with_suffix(".settings.txt")
         if not s.exists() or s.read_text() != SETTINGS:
             raise SystemExit(f"{path} was trained with other spectrogram settings than aimd/cnn.py ({SETTINGS}): "
-                             "retrain it (README: 'Retraining a detector')")
+                             "retrain it (RESEARCH.md: 'Retraining a detector')")
         self.net = resnet18_1ch(pretrained=False)
         self.net.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
         self.net.eval()

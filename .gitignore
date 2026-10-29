@@ -9,7 +9,7 @@ demo/audio/
 
 # Not cleared for public release (see MODEL_CARD.md, "Ethics and legal notes"): every file in data/ is derived
 # from audio under NonCommercial / NoDerivatives / scraped terms, and data/manifest.csv holds platform user IDs.
-# All of it is rebuilt by the README steps.
+# All of it is rebuilt by the steps in RESEARCH.md.
 data/
 # Trained models: legal review first. config.json (main detector + caveat text) is plain text and stays.
 models/*

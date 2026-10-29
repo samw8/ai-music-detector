@@ -69,7 +69,7 @@ def load_inputs(df, needed: set, variant: str = ""):
             st = REPO / "data" / "logmel_settings.txt"
             if not st.exists() or st.read_text() != SETTINGS:
                 raise SystemExit(f"data/logmel.npy was built with other spectrogram settings than aimd/cnn.py ({SETTINGS}): re-run "
-                                 "`run melspec`, then retrain the ResNet18 (README: 'Retraining a detector')")
+                                 "`run melspec`, then retrain the ResNet18 (RESEARCH.md: 'Retraining a detector')")
         missing = [c for c in order if c not in pos]
         if missing:
             raise SystemExit(f"{len(missing)} clips have no {name} representation yet (e.g. {missing[:2]}): re-run that step")
@@ -115,7 +115,7 @@ def main() -> None:
             st = pdir / "_settings.txt"
             if st.exists() and st.read_text() != SETTINGS:
                 raise SystemExit(f"{pdir} holds predictions made with other spectrogram settings ({st.read_text()}); "
-                                 "move that folder aside to retrain (README: 'Retraining a detector')")
+                                 "move that folder aside to retrain (RESEARCH.md: 'Retraining a detector')")
             pdir.mkdir(parents=True, exist_ok=True)
             st.write_text(SETTINGS)
         for r in rounds:

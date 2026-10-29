@@ -3,8 +3,8 @@ and get the main detector's P(AI) for that song, with the same caveats predict.p
 
     streamlit run webapp/streamlit_app.py      # then open http://localhost:8501
 
-Online it runs on Streamlit Community Cloud straight from the GitHub repository (README: "Putting the page
-online"). The trained weights are not in the repository: they are downloaded at start-up from a private
+Online it runs on Streamlit Community Cloud straight from the GitHub repository (RESEARCH.md: "The
+website"). The trained weights are not in the repository: they are downloaded at start-up from a private
 Hugging Face model repository (webapp/upload_model.py) with the token stored as the app secret HF_TOKEN.
 
 Scores audio exactly as predict.py does (same decoder, same 10-second excerpts, same ResNet18). For links,

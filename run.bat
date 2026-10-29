@@ -49,7 +49,7 @@ if /i "%~1"=="all" (
   )
   exit /b
 )
-echo Unknown command "%~1". See the top of run.bat or README.md.
+echo Unknown command "%~1". See the top of run.bat or RESEARCH.md.
 exit /b 1
 
 :setup
