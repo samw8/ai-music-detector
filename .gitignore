@@ -1,0 +1,29 @@
+# Never commit audio (licensing): the downloads and excerpts live in %USERPROFILE%\.aimd anyway
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.ogg
+*.opus
+demo/audio/
+
+# Not cleared for public release (see MODEL_CARD.md, "Ethics and legal notes"): every file in data/ is derived
+# from audio under NonCommercial / NoDerivatives / scraped terms, and data/manifest.csv holds platform user IDs.
+# All of it is rebuilt by the README steps.
+data/
+# Trained models: legal review first. config.json (main detector + caveat text) is plain text and stays.
+models/*
+!models/config.json
+# Per-clip predictions (rebuilt by `run train`) and anything that scores named artists
+results/predictions/
+results/predictions_*.csv
+results/demo_case_study.*
+# Names real people with AI/human labels: have it reviewed before publishing
+demo/artists.csv
+
+__pycache__/
+*.pyc
+.venv/
+
+# The superseded ResNet18 (16 kHz log-mel, had the band-limit shortcut): predictions and weights. Its summary rows stay in results/resnet18_16k_before*.csv
+results/archive/

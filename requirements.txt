@@ -1,0 +1,21 @@
+# torch, torchaudio, torchvision: install from the CPU index (see run.bat setup)
+numpy
+scipy
+pandas
+scikit-learn
+soundfile
+soxr
+librosa
+matplotlib
+tqdm
+requests
+huggingface_hub
+transformers
+safetensors
+imageio-ffmpeg
+pyloudnorm
+timm
+einops
+onnxruntime
+joblib
+tabulate

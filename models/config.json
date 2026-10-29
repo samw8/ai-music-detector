@@ -1,0 +1,20 @@
+{
+  "primary": "resnet18_mel",
+  "selected_by": "highest worst-case score over: matched_balanced_accuracy, unseen_gen_balanced_accuracy_mean, unseen_human_acc_fma_pre2010, unseen_human_acc_jamendo, vocal_to_instr_balanced_accuracy, instr_to_vocal_balanced_accuracy",
+  "worst_case_score": 0.6940535733005982,
+  "uncertain_band": [
+    0.2,
+    0.8
+  ],
+  "caveat": "When this detector type was retrained with FMA left out, it wrongly called 14% of FMA tracks (uploaded before 2010) AI-generated; retrained without Jamendo, 28% of Jamendo tracks (counting P(AI) >= 0.5 as an AI call; this tool says LIKELY AI-GENERATED only at P(AI) >= 0.8, which still flagged 4% and 14% of those tracks, and put 30% and 35% in UNCERTAIN). Treat those as estimates of how often it accuses real musicians whose music is unlike its training data (the copy shipped here did train on FMA, Jamendo and some GuitarSet). Retrained without a given AI generator, it caught 69% of that generator's tracks on average (worst: riffusion_v1, 9%); with a whole model family held out (like music from a new company), as few as 42% (all udio versions). Retrained on vocal music only, it scored 69% balanced accuracy on instrumentals and wrongly called 23% of human instrumentals AI-generated (retrained on instrumentals only: 85% on vocal music). On the matched test split (new artists, otherwise familiar music) it scored 89% and wrongly called 8% of human tracks AI-generated. Rates are per 10-second excerpt. Its worst everyday edits: after pitch +2 semitones, balanced accuracy 82%; after pitch -2 semitones, balanced accuracy 84%; after tempo 1.1x (pitch kept), balanced accuracy 85% (unedited: 89%; 50% = coin flip; results/robustness.csv). Old or lo-fi human recordings (almost no sound above 8 kHz) are still wrongly called AI more often: 24% of such old FMA tracks, against 12% of the rest. A score is one piece of evidence, never proof that a musician used AI.",
+  "unseen_human_verdicts": {
+    "fma_pre2010": [
+      0.03879849812265332,
+      0.2978723404255319
+    ],
+    "jamendo": [
+      0.1405,
+      0.3465
+    ]
+  }
+}

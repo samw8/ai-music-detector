@@ -1,0 +1,85 @@
+detector,round,test_set,n,n_artists,in_domain_for_detector,accuracy,lo,hi,fpr
+clap_lr,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.613,0.5807862886724505,0.6408822207588543,0.387
+clap_lr,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.9972222222222222,,,0.002777777777777778
+clap_lr,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.9084302325581395,0.8913369436049018,0.9237605787994388,
+clap_lr,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.6871088861076345,0.6523301463518855,0.7197530864197531,0.31289111389236546
+clap_lr,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.7140620106482931,0.6967031083006769,0.7308063225021579,0.28593798935170683
+clap_lr,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.9527777777777777,,,0.04722222222222222
+clap_lr,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.8728197674418605,0.8476585971176035,0.8969420993386802,
+fakeprint_lr,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.8175,0.7998008195335244,0.8360074827983621,0.1825
+fakeprint_lr,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.8083333333333333,,,0.19166666666666668
+fakeprint_lr,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.9135174418604651,0.8941930815117235,0.9341725708502024,
+fakeprint_lr,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.8060075093867334,0.7798970320154951,0.8321122088494919,0.1939924906132666
+fakeprint_lr,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.7870341371750704,0.7736495460893009,0.8016826034197697,0.21296586282492955
+fakeprint_lr,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.6972222222222222,,,0.30277777777777776
+fakeprint_lr,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.9142441860465116,0.8953037911250652,0.9353636707461075,
+fakeprint_lr@mp3,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.8195,0.8023346737210408,0.838712857120145,0.1805
+fakeprint_lr@mp3,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.7916666666666666,,,0.20833333333333334
+fakeprint_lr@mp3,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.8938953488372093,0.8714755394709659,0.9171203606868223,
+fakeprint_lr@mp3,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.785982478097622,0.7565157308280533,0.8142516444957043,0.21401752190237797
+fakeprint_lr@mp3,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.7766990291262136,0.7621844490307124,0.7909073289194407,0.22330097087378642
+fakeprint_lr@mp3,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.6972222222222222,,,0.30277777777777776
+fakeprint_lr@mp3,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.9113372093023255,0.88994796094265,0.9330838481676905,
+feat_gbt,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.6505000000000001,0.6215270260230938,0.6760252676774248,0.3495
+feat_gbt,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.6194444444444445,,,0.38055555555555554
+feat_gbt,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.9280523255813954,0.9126415282987643,0.9423233279848434,
+feat_gbt,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.4042553191489362,0.3667009811883175,0.4391491431475628,0.5957446808510638
+feat_gbt,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.4556843094268713,0.4378516615507807,0.47466011307322054,0.5443156905731287
+feat_gbt,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.04166666666666663,,,0.9583333333333334
+feat_gbt,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.9265988372093024,0.9080293732917352,0.9436741744120547,
+feat_gbt@mp3,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.7185,0.6920604028581709,0.7427855378310577,0.2815
+feat_gbt@mp3,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.8111111111111111,,,0.18888888888888888
+feat_gbt@mp3,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.8997093023255814,0.8828457214512958,0.9170187529301453,
+feat_gbt@mp3,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.5043804755944932,0.4659025850104095,0.5401780435934249,0.4956195244055069
+feat_gbt@mp3,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.5721891637958033,0.5529485422894587,0.5902883962376604,0.4278108362041967
+feat_gbt@mp3,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.6611111111111111,,,0.3388888888888889
+feat_gbt@mp3,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.9142441860465116,0.898629437275088,0.9293986195737521,
+feat_lr,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.597,0.5686547623478617,0.6233147838393491,0.403
+feat_lr,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.6388888888888888,,,0.3611111111111111
+feat_lr,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.8125,0.7902993104826017,0.8340415467434175,
+feat_lr,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.523153942428035,0.4862438772264631,0.5598553789357201,0.47684605757196497
+feat_lr,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.575634199812089,0.5579530173696223,0.5940180675090032,0.42436580018791104
+feat_lr,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.2222222222222222,,,0.7777777777777778
+feat_lr,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.7943313953488372,0.7628915683495743,0.8243584564700273,
+feat_lr@mp3,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.657,0.6301935504938372,0.6815451581693166,0.343
+feat_lr@mp3,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.5972222222222222,,,0.4027777777777778
+feat_lr@mp3,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.7877906976744186,0.7627596891434697,0.8131771265062215,
+feat_lr@mp3,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.4831038798498123,0.44622410210418695,0.5206018355349414,0.5168961201501877
+feat_lr@mp3,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.5593485750078296,0.5397702540568498,0.577997272938745,0.44065142499217036
+feat_lr@mp3,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.33611111111111114,,,0.6638888888888889
+feat_lr@mp3,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.7979651162790697,0.767472663493338,0.8276667461326552,
+feat_lr_noformat,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.47550000000000003,0.4435780285480022,0.5047886648692048,0.5245
+feat_lr_noformat,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.875,,,0.125
+feat_lr_noformat,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.7761627906976745,0.7527754012468497,0.7990376460914091,
+feat_lr_noformat,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.3829787234042553,0.3469628023314517,0.42017931703308775,0.6170212765957447
+feat_lr_noformat,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.44347009082367683,0.4250684543904162,0.4624091518153065,0.5565299091763232
+feat_lr_noformat,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.9555555555555556,,,0.044444444444444446
+feat_lr_noformat,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.7572674418604651,0.7315891543688473,0.782642436364547,
+feat_lr_noformat@mp3,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.47,0.4376171839856051,0.49904915571193875,0.53
+feat_lr_noformat@mp3,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.8527777777777777,,,0.14722222222222223
+feat_lr_noformat@mp3,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.7761627906976745,0.7511335089974741,0.7991686203534709,
+feat_lr_noformat@mp3,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.4005006257822278,0.3636308203991131,0.43773119605425403,0.5994993742177722
+feat_lr_noformat@mp3,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.4556843094268713,0.4370669275393605,0.47429154941732643,0.5443156905731287
+feat_lr_noformat@mp3,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.9611111111111111,,,0.03888888888888889
+feat_lr_noformat@mp3,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.7521802325581395,0.7252236736373793,0.7788604982137288,
+lofcz_fakeprint,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.9985,0.9964857670117088,1.0,0.0015
+lofcz_fakeprint,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,1.0,,,0.0
+lofcz_fakeprint,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.06976744186046512,0.05645670677407998,0.08499289468690283,
+lofcz_fakeprint,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,True,1.0,0.9937417079585352,1.0,0.0
+lofcz_fakeprint,train_human=jamendo_test=fma,"FMA, all",3193,2377,True,0.9987472596304416,0.9974794415986356,0.9996909765142151,0.001252740369558409
+lofcz_fakeprint,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,1.0,,,0.0
+lofcz_fakeprint,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.06976744186046512,0.05645670677407998,0.08499289468690283,
+resnet18_mel,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.7224999999999999,0.6971125394529196,0.7469825661372422,0.2775
+resnet18_mel,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.9944444444444445,,,0.005555555555555556
+resnet18_mel,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.8953488372093024,0.8739915966386554,0.9145575702324533,
+resnet18_mel,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.8598247809762203,0.8339575530586767,0.8841323155296104,0.14017521902377972
+resnet18_mel,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.8656435953648607,0.853228130219518,0.8769572621154593,0.13435640463513937
+resnet18_mel,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.8472222222222222,,,0.1527777777777778
+resnet18_mel,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.8270348837209303,0.8029240625785433,0.8489366280842628,
+spectttra_alpha5s,train_human=fma_test=jamendo,Jamendo (MTG + MuseBench),2000,1084,False,0.94,0.9287131134049991,0.9507268057147896,0.06
+spectttra_alpha5s,train_human=fma_test=jamendo,GuitarSet (solo acoustic),360,6,False,0.7944444444444445,,,0.20555555555555555
+spectttra_alpha5s,train_human=fma_test=jamendo,AI tracks (seen generators),1376,998,False,0.2863372093023256,0.2582688247712878,0.3159825810731955,
+spectttra_alpha5s,train_human=jamendo_test=fma,FMA uploaded before 2010,799,610,False,0.9236545682102628,0.903939118589448,0.9412520567967324,0.07634543178973717
+spectttra_alpha5s,train_human=jamendo_test=fma,"FMA, all",3193,2377,False,0.938615721891638,0.929310706897924,0.9474511312818621,0.06138427810836204
+spectttra_alpha5s,train_human=jamendo_test=fma,GuitarSet (solo acoustic),360,6,False,0.7944444444444445,,,0.20555555555555555
+spectttra_alpha5s,train_human=jamendo_test=fma,AI tracks (seen generators),1376,998,False,0.2863372093023256,0.2582688247712878,0.3159825810731955,

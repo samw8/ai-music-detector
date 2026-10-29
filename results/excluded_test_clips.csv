@@ -1,0 +1,3 @@
+condition,round,clip_id,reason
+unseen_generator,udio_v1,udio_dedup-9138d1a32f,exact duplicate of a training clip
+unseen_generator,udio_v1.5,udio_v15-39d86e2bdf,exact duplicate of a training clip
