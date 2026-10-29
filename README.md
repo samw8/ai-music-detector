@@ -23,7 +23,10 @@ rates:** `MODEL_CARD.md`. **Proof the splits are clean:** `results/leakage_repor
 
 ## Checking a song (no programming needed)
 
-Open a Command Prompt in this folder (in File Explorer, click the address bar, type `cmd`, press Enter) and type:
+Easiest: drag a song file (or a whole folder of songs) onto **`Check songs.bat`** in this folder.
+A window opens and shows the result for each song.
+
+Or open a Command Prompt in this folder (in File Explorer, click the address bar, type `cmd`, press Enter) and type:
 
 ```
 run check "C:\path\to\song.mp3"
