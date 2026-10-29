@@ -48,6 +48,32 @@ checker warns on low-sample-rate, low-bitrate or band-limited files again.)
 
 **A score is evidence, not proof. Never use it alone to accuse an artist.**
 
+### The web page (no download needed)
+
+`webapp/streamlit_app.py` is the same main detector as a web page: paste a Spotify, Apple Music, YouTube
+or Deezer link, type "Artist - Song", or upload an audio file. Full songs on those services are
+copy-protected, so for a link the page analyses the song's official 30-second preview from Deezer or
+Apple (for Spotify and YouTube links it reads only the title and artist, then finds that preview).
+Nothing is stored. It scores audio exactly as `run check` does, but hears only those 30 seconds.
+
+**Putting it online** (free, on Streamlit Community Cloud):
+
+1. The trained detector is not on GitHub. It sits in a private Hugging Face model repository
+   (`norows/ai-music-detector-model`), uploaded with `python webapp/upload_model.py` after `hf auth login`.
+   Run that again after every retrain.
+2. At https://share.streamlit.io sign in with GitHub, click **Create app**, then "Deploy a public app from
+   GitHub": repository `samw8/ai-music-detector`, branch `main`, main file path `webapp/streamlit_app.py`.
+   Under **Advanced settings** choose Python 3.12 and paste into **Secrets** one line,
+   `HF_TOKEN = "hf_..."`, with a Hugging Face **Read** token from https://huggingface.co/settings/tokens.
+3. After a retrain and upload, open the app's menu on Streamlit and choose **Reboot app** so it fetches
+   the new detector.
+
+The page goes to sleep after 12 hours without visitors; the first visit after that wakes it in about
+a minute.
+
+To run it on your own computer instead: `streamlit run webapp/streamlit_app.py` (with the packages in
+`webapp/requirements.txt` installed).
+
 ---
 
 ## Re-running the research, step by step
@@ -105,6 +131,7 @@ clips whose mono mix is silent.
 | `aimd/splits.py` | The evaluation conditions and the leakage checks that stop the program |
 | `aimd/models.py`, `aimd/cnn.py` | The detectors |
 | `predict.py` | Check one song or a folder |
+| `webapp/` | The web page (`streamlit_app.py`), turning song links into official preview clips (`links.py`), uploading the detector to its private repository (`upload_model.py`) |
 | `demo/artists.csv` | 21 publicly reported AI acts, 2 single AI-assisted tracks by otherwise human artists (track-level only; one is tier D, assumed), and 30 genre-matched human artists, with evidence and sources. It names real people, so it is kept out of the public repository until it has been reviewed. |
 | `results/` | Tables, figures and reports (per-clip predictions are rebuilt by `run train` and not published) |
 | `MODEL_CARD.md` | Training data, failure modes, the out-of-domain false-positive rate |
@@ -137,3 +164,5 @@ clips whose mono mix is silent.
 * **Commercial detector APIs** (Ircam Amplify, Resemble AI) need paid keys - not called.
 * **Legal review** before publishing the paper, the trained models, the derived data files or
   `demo\artists.csv`, before publishing per-artist verdicts, and before deploying a public tool - see `MODEL_CARD.md`.
+  The web page is such a tool. It also analyses Deezer's and Apple's preview clips and reads song titles from
+  Spotify and YouTube pages, and whether that use fits those services' terms is part of the same review.
