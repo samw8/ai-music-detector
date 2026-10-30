@@ -35,8 +35,11 @@ checker warns on low-sample-rate, low-bitrate or band-limited files again.
 
 https://who-gets-called-ai.streamlit.app runs `webapp/streamlit_app.py`. For a link, it finds the song's
 official 30-second preview on Deezer or Apple (`webapp/links.py`); for Spotify and YouTube links it reads
-only the title and artist, then finds that preview. Nothing is stored. It scores audio exactly as
-`run check` does, but hears only those 30 seconds.
+only the title and artist, then finds that preview. Nothing is stored. When the song it finds is not a
+confident match, it shows the match and asks before scoring it. It scores audio with the same decoder,
+excerpt positions and detector as `run check`, but hears only those 30 seconds. For uploads longer than
+about 30 seconds it decodes each 10-second excerpt on its own (as the training clips were cut) to save
+memory, which can move the score by a few hundredths compared with `run check`.
 
 Redeploying (free, on Streamlit Community Cloud):
 

@@ -84,14 +84,23 @@ def probe(path: str | Path) -> dict:
     return out
 
 
-def decode_stereo(path: str | Path, offset: float, dur: float | None, sr_native: int, sr: int = 48000) -> np.ndarray:
+def decode_stereo(path: str | Path, offset: float, dur: float | None, sr_native: int, sr: int = 48000,
+                  max_frames: int | None = None) -> np.ndarray:
     """THE decoding path for every clip, training and prediction alike: ffmpeg at the native rate,
-    upmixed to 2 channels, then soxr HQ to ``sr``. Returns [2, n] float32."""
+    upmixed to 2 channels, then soxr HQ to ``sr``. Returns [2, n] float32.
+
+    ``max_frames`` (used by the web page, never in training): refuse a file that yields more native-rate frames
+    than that, i.e. whose real sample rate is higher than ``sr_native`` (ffmpeg's banner can be imitated by tags)."""
     cmd = [ffmpeg_exe(), "-nostdin", "-loglevel", "error", "-ss", f"{offset:.3f}"]
     if dur:
         cmd += ["-t", f"{dur:.3f}"]
-    cmd += ["-i", str(path), "-vn", "-ac", "2", "-f", "f32le", "-"]
+    cmd += ["-i", str(path), "-vn", "-ac", "2"]
+    if max_frames:
+        cmd += ["-fs", str(8 * max_frames + 8)]  # ffmpeg stops writing just past the limit
+    cmd += ["-f", "f32le", "-"]
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
+    if max_frames and len(raw) > 8 * max_frames:
+        raise ValueError("the file holds more audio than its stated sample rate allows")
     y = np.frombuffer(raw, dtype=np.float32).reshape(-1, 2).T.copy()
     if sr_native and sr_native != sr:
         y = np.stack([_resample(c, sr_native, sr) for c in y])
