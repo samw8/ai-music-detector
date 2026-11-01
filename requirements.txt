@@ -1,21 +1,22 @@
-# torch, torchaudio, torchvision: install from the CPU index (see run.bat setup)
-numpy
-scipy
-pandas
-scikit-learn
-soundfile
-soxr
-librosa
-matplotlib
-tqdm
-requests
-huggingface_hub
-transformers
-safetensors
-imageio-ffmpeg
-pyloudnorm
-timm
-einops
-onnxruntime
-joblib
-tabulate
+# The versions the published results were made with (Python 3.12). torch, torchaudio, torchvision come from
+# the CPU index instead (run.bat setup: torch==2.14.1, torchaudio==2.11.0, torchvision==0.29.1).
+numpy==2.5.4
+scipy==1.18.1
+pandas==3.1.0
+scikit-learn==1.9.1
+soundfile==0.14.0
+soxr==1.1.0
+librosa==1.0.0
+matplotlib==3.11.2
+tqdm==4.70.1
+requests==2.34.2
+huggingface_hub==2.3.0
+transformers==5.20.2
+safetensors==0.8.0
+imageio-ffmpeg==0.6.0
+pyloudnorm==0.2.0
+timm==1.0.30
+einops==0.8.2
+onnxruntime==1.31.0
+joblib==1.6.0
+tabulate==0.10.0

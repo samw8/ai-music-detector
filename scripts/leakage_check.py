@@ -27,6 +27,62 @@ from aimd.metrics import summarize  # noqa: E402
 from aimd.splits import base_split, check_round, load_table, make_rounds  # noqa: E402
 
 
+def _lead_sheet(track_id: str) -> str:
+    """GuitarSet 'guitarset:04_Rock2-142-D_comp_mic' -> 'Rock2-142-D' (the lead sheet; every player plays all of them)."""
+    import re
+
+    return re.sub(r"_(comp|solo)(_mic)?$", "", re.sub(r"^\d+_", "", track_id.split(":", 1)[1]))
+
+
+def near_copy_text(df, tr, te, best, arg, thr: float = 0.98) -> str:
+    """Line 2b: how many matched test clips have a CLAP near-copy in training, and what those near-copies are.
+    best/arg: each test clip's highest cosine similarity to a training clip, and that training clip's position among them."""
+    te_i, tr_i = np.flatnonzero(te), np.flatnonzero(tr)
+    hit = np.flatnonzero(best >= thr)
+    out = (f"2b. **Near-duplicates (CLAP cosine >= {thr}):** {len(hit)} of {len(te_i)} test clips have a near-copy in training "
+           f"(median nearest-neighbour similarity {np.median(best):.3f}).")
+    if not len(hit):
+        return out
+    t, n = df.iloc[te_i[hit]], df.iloc[tr_i[arg[hit]]]
+    gs = (t.source.to_numpy() == "guitarset") & (n.source.to_numpy() == "guitarset")
+    parts = []
+    if gs.any():
+        other_player = int((t.artist_id.to_numpy()[gs] != n.artist_id.to_numpy()[gs]).sum())
+        pairs = [(a.split(":", 1)[1], b.split(":", 1)[1]) for a, b in zip(t.track_id[gs], n.track_id[gs])
+                 if _lead_sheet(a) == _lead_sheet(b)]
+        sheet = ("a different lead sheet" if not pairs else "mostly a different lead sheet" if len(pairs) < gs.sum() / 2
+                 else "often the same lead sheet")
+        parts.append(f"{int(gs.sum())} of the {len(hit)} are GuitarSet clips whose nearest training clip is "
+                     + ("another player's recording" if other_player == gs.sum() else f"a GuitarSet recording ({other_player} by another player)")
+                     + f" with the same instrument and recording setup and {sheet}"
+                     + (f" ({len(pairs)} pair{'s' if len(pairs) > 1 else ''} share{'' if len(pairs) > 1 else 's'} a lead sheet: "
+                        + "; ".join(f"{a} and {b}" for a, b in pairs) + ")" if pairs else ""))
+    rest = t[~gs].source.value_counts()
+    if len(rest):
+        parts.append(("the other " if gs.any() else "") + ", ".join(f"{k} {'is' if k == 1 else 'are'} {s}" for s, k in rest.items()))
+    out += " " + "; ".join(parts) + ". They are left in the scoring (only exact duplicates are removed)."
+    g = df[df.source == "guitarset"]
+    g_tr, g_te = g[tr[g.index.to_numpy()]], g[te[g.index.to_numpy()]]
+    if len(g_tr) and len(g_te):
+        shared = int(g_te.track_id.map(_lead_sheet).isin(set(g_tr.track_id.map(_lead_sheet))).sum())
+        same_set = g.groupby("artist_id").track_id.apply(lambda s: frozenset(s.map(_lead_sheet))).nunique() == 1
+        players = ", ".join(sorted(a.split(":", 1)[1] for a in g_te.artist_id.unique()))
+        out += (f" GuitarSet's {len(g_te)} matched test clips (players {players}) "
+                + ("all" if shared == len(g_te) else f"include {shared} that") + " play lead sheets that the training players also play"
+                + (f" (every GuitarSet player plays the same {g.track_id.map(_lead_sheet).nunique()} lead sheets)" if same_set else "")
+                + ", so the GuitarSet part of the matched test measures new players, not new compositions.")
+    return out
+
+
+def shuffle_text(bas, aucs) -> str:
+    """Line 3. A label-shuffle control only shows the scoring code gives chance when the labels carry no signal; it cannot
+    reveal artist or composition leakage (checks 1, 2a and 2b look for those)."""
+    return (f"3. **Shuffled-label control (10 permutations):** balanced accuracy {np.mean(bas):.3f} ± {np.std(bas):.3f}, "
+            f"AUC {np.mean(aucs):.3f} ± {np.std(aucs):.3f}; it should centre on 0.5. This shows only that the evaluation code gives "
+            "chance-level scores when the labels carry no signal (features + LR). It cannot detect artist or composition leakage: a "
+            "model trained on shuffled labels has nothing to exploit either way. Checks 1, 2a and 2b look for those.")
+
+
 def main() -> None:
     import pandas as pd
     import soundfile as sf
@@ -68,12 +124,11 @@ def main() -> None:
     E = np.load(REPO / "data" / "emb_clap.npy")
     pos = {c: i for i, c in enumerate(ids)}
     Etr, Ete = E[[pos[c] for c in df.clip_id[tr]]], E[[pos[c] for c in df.clip_id[te]]]
-    best = np.zeros(len(Ete))
+    best, arg = np.zeros(len(Ete)), np.zeros(len(Ete), dtype=int)
     for i in range(0, len(Ete), 512):
-        best[i:i + 512] = (Ete[i:i + 512] @ Etr.T).max(axis=1)
-    near = int((best >= 0.98).sum())
-    lines += [f"2b. **Near-duplicates (CLAP cosine >= 0.98):** {near} of {len(Ete)} test clips have a near-copy in training "
-              f"(median nearest-neighbour similarity {np.median(best):.3f}).", ""]
+        sim = Ete[i:i + 512] @ Etr.T
+        best[i:i + 512], arg[i:i + 512] = sim.max(axis=1), sim.argmax(axis=1)
+    lines += [near_copy_text(df, tr, te, best, arg), ""]
 
     feats = pd.read_csv(REPO / "data" / "features.csv").set_index("clip_id").loc[df.clip_id, F.names()].to_numpy()
     # 2c. exact duplicates that straddle training and test in ANY round
@@ -111,9 +166,7 @@ def main() -> None:
         s = summarize(y[te], lr.predict_proba(feats[te])[:, 1])
         bas.append(s["balanced_accuracy"])
         aucs.append(s["auc"])
-    lines += [f"3. **Shuffled-label control (10 permutations):** balanced accuracy {np.mean(bas):.3f} ± {np.std(bas):.3f}, "
-              f"AUC {np.mean(aucs):.3f} ± {np.std(aucs):.3f}; it should centre on 0.5. A model that cannot learn from the labels "
-              "scores at chance, so the real models' scores come from the labels, not from the split.", ""]
+    lines += [shuffle_text(bas, aucs), ""]
 
     fmt_cols = ["orig_sr", "orig_ch", "kbps", "codec"]
     X = df[fmt_cols].copy()

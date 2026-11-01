@@ -1,5 +1,6 @@
 # The online page (Streamlit Community Cloud installs these; choose Python 3.12 when deploying).
-# Same versions as the research environment, so the page scores audio exactly as the pipeline does.
+# The same package versions as the research environment (requirements.txt). The ffmpeg that imageio-ffmpeg
+# bundles for Linux (7.0.2) differs from the Windows one used for training (7.1); on the songs checked, the slice scores matched to two decimals.
 --extra-index-url https://download.pytorch.org/whl/cpu
 streamlit==1.66.1
 torch==2.14.1+cpu

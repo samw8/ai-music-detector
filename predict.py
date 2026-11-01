@@ -72,6 +72,16 @@ def verdict(p: float, cfg: dict) -> str:
     return "UNCERTAIN"
 
 
+def shown(p: float, cfg: dict) -> float:
+    """p rounded to 2 decimals for display, kept on its verdict's side of a cut-off (0.797 shows as 0.79, so the
+    screen never says "0.80 -> UNCERTAIN"). The verdict itself always uses the unrounded p."""
+    lo, hi = cfg.get("uncertain_band", [0.2, 0.8])
+    r = round(p, 2)
+    if lo < p < hi:
+        r = min(max(r, round(lo + 0.01, 2)), round(hi - 0.01, 2))
+    return r
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
@@ -102,7 +112,7 @@ def main() -> None:
         p = preds.get(primary, next(iter(preds.values())))
         print("\n" + "=" * 78)
         print(f"{f.name}")
-        print(f"  P(AI) = {p:.2f}   ->  {verdict(p, cfg)}   (main detector: {label(primary)})")
+        print(f"  P(AI) = {shown(p, cfg):.2f}   ->  {verdict(p, cfg)}   (main detector: {label(primary)})")
         print(f"  scored {len(clips)} ten-second excerpt(s); per-excerpt: " + ", ".join(f"{x:.2f}" for x in np.ravel(per_excerpt[primary])))
         if len(preds) > 1:
             for m, v in preds.items():

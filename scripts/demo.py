@@ -12,11 +12,12 @@ The folder name is matched to demo\\artists.csv to know whether the artist is
 treated as human or AI and with which provenance tier. Use only the releases
 listed in the which_releases column of demo\\artists.csv: it names the exact
 albums and warns about look-alike profiles and name collisions; leave every
-other track by that artist out. For the two '(track-level only)' rows (Josh
-Fawaz, mikeeysmind) only the named track is labelled AI; any other file in that
-folder is labelled unknown. Every prediction is
+other track by that artist out. For the two '(track-level only)' rows only the
+named track is labelled AI; any other file in that folder is labelled unknown.
+Every prediction is
 reported, including the wrong ones - finding where the detector fails is the result.
-The audio itself must not be shared or published; only the scores are.
+Neither the audio nor the scores (results/demo_case_study.*, which score named
+artists) may be shared or published until the legal review in RESEARCH.md.
 
 Output: results/demo_case_study.csv and results/demo_case_study.md
 """
@@ -63,7 +64,7 @@ def main() -> None:
         artist = f.parent.name
         m = match_artist(artist, table)
         if m is not None and "track-level only" in m["artist"]:
-            title = re.sub(r"\s*\(.*?\)", "", re.search(r"'(.+?)'", m["artist"]).group(1)).lower()  # 'like a prayer', 'papaoutai'
+            title = re.sub(r"\s*\(.*?\)", "", re.search(r"'(.+?)'", m["artist"]).group(1)).lower()  # "'Title (Remix)'" -> "title"
             if title not in f.stem.lower():
                 m = None  # only the named track carries the AI label; the rest of the catalogue is not confirmed AI
         meta = m or {"treat_as": "unknown", "tier": "D", "genre": ""}

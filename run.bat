@@ -2,6 +2,7 @@
 rem One-word launcher so nobody has to remember where Python lives.
 rem   run setup                    install everything (first time only)
 rem   run check "C:\Music\song.mp3"   check one song or a folder
+rem   run web                      the website, on this computer (http://localhost:8501)
 rem   run all                      re-run the whole research pipeline, start to finish
 rem   run <step>                   one step: download, prepare, tag, features, embed, melspec,
 rem                                train, baselines, evaluate, leakage, robustness, fingerprints,
@@ -16,6 +17,7 @@ set "PYTHONUNBUFFERED=1"
 set "PYTHONUTF8=1"
 
 if /i "%~1"=="setup" goto setup
+if /i "%~1"=="web" goto web
 if not exist "%PY%" (
   echo Python environment not found. Run:  run setup
   exit /b 1
@@ -58,8 +60,29 @@ where uv >nul 2>nul || powershell -NoProfile -ExecutionPolicy Bypass -Command "i
 set "PATH=%USERPROFILE%\.local\bin;%PATH%"
 set "UV_PYTHON_INSTALL_DIR=%AIMD_HOME%\python"
 uv venv "%AIMD_HOME%\venv" --python 3.12 --managed-python || exit /b 1
-uv pip install --python "%PY%" torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu || exit /b 1
+uv pip install --python "%PY%" torch==2.14.1 torchaudio==2.11.0 torchvision==0.29.1 --index-url https://download.pytorch.org/whl/cpu || exit /b 1
 uv pip install --python "%PY%" -r "%HERE%requirements.txt" || exit /b 1
 uv pip install --python "%PY%" --no-deps "git+https://github.com/awsaf49/sonics.git@9156ffad151f797c71556923c4a02fa01fa8fc91"
 echo Setup finished.
+exit /b
+
+:web
+rem The website runs in its own environment (webapp\requirements.txt), installed the first time.
+rem It uses the normal Hugging Face login (hf auth login), not the research cache set above.
+set "HF_HOME="
+set "WPY=%AIMD_HOME%\webvenv\Scripts\python.exe"
+if exist "%AIMD_HOME%\webvenv\installed.txt" goto webrun
+where uv >nul 2>nul || powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+set "UV_PYTHON_INSTALL_DIR=%AIMD_HOME%\python"
+if not exist "%WPY%" uv venv "%AIMD_HOME%\webvenv" --python 3.12 --managed-python || exit /b 1
+uv pip install --python "%WPY%" -r "%HERE%webapp\requirements.txt" || exit /b 1
+rem marks a finished install, so an interrupted one is completed next time
+echo ok> "%AIMD_HOME%\webvenv\installed.txt"
+:webrun
+cd /d "%HERE%"
+rem headless: skips Streamlit's first-run e-mail prompt; the browser is opened a few seconds later instead
+echo The website is starting at http://localhost:8501 . Close this window to stop it.
+start "" /b cmd /c "ping -n 7 127.0.0.1 >nul & start "" http://localhost:8501"
+"%WPY%" -m streamlit run "%HERE%webapp\streamlit_app.py" --server.headless true
 exit /b

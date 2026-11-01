@@ -27,3 +27,10 @@ __pycache__/
 
 # The superseded ResNet18 (16 kHz log-mel, had the band-limit shortcut): predictions and weights. Its summary rows stay in results/resnet18_16k_before*.csv
 results/archive/
+
+# Local secrets for the web page (HF_TOKEN): never commit them
+.streamlit/secrets.toml
+.env
+# Per-clip features from NonCommercial / NoDerivatives / scraped audio, like data/ (scripts/make_report.py reads it
+# locally); the summary in results/harmony_probe.md stays public
+results/harmony_probe.csv

@@ -8,7 +8,9 @@ Writes to results/:
     unseen_human_breakdown.csv    accuracy on each unseen human source (FMA pre-2010, Jamendo, GuitarSet)
     unseen_generator_table.csv    share of each held-out generator's tracks caught, per model
     vocal_instr_table.csv, genre_table.csv
-    figures/*.png                 the same numbers as figures, plus a confusion matrix per condition
+    figures/*.png                 the same numbers as figures, plus a confusion matrix per condition (and robustness.png
+                                  redrawn from robustness.csv with short labels)
+    ../models/config.json         the main detector, its plain-language caveat and its weight file's sha256
 """
 from __future__ import annotations
 
@@ -42,6 +44,58 @@ def panel_title(d: str, n: int = 30) -> str:
          .replace(" (not retrained)", ""))
     t = t if len(t) <= n else t[: n - 1] + "…"
     return t + (" [MP3-equalised]" if var == "mp3" else (f" [{var}]" if var else ""))
+
+
+# Short, unique axis labels for figures that show many detectors side by side.
+SHORT = {"fakeprint_lr": "Fakeprint LR", "feat_lr": "1. Features LR", "feat_gbt": "2. Features GBT", "resnet18_mel": "3. ResNet18 mel",
+         "clap_lr": "4. CLAP LR", "feat_lr_noformat": "Ablation: no-format LR", "spectttra_alpha5s": "SONICS (off-shelf)",
+         "lofcz_fakeprint": "lofcz LR (off-shelf)"}
+
+
+def short_label(d: str) -> str:
+    base, _, var = d.partition("@")
+    return SHORT.get(base, base) + (" [MP3]" if var == "mp3" else (f" [{var}]" if var else ""))
+
+
+# Plain names for generator and family IDs, for text a non-specialist reads (the website's caveat).
+GEN_NAMES = {"riffusion_v1": "Riffusion v1", "riffusion_fuzz1.1": "Riffusion FUZZ 1.1", "riffusion": "Riffusion",
+             "stable_audio_open": "Stable Audio Open", "audioldm2": "AudioLDM 2", "musicgen": "MusicGen", "magnet": "MAGNeT",
+             "jasco": "JASCO", "mustango": "Mustango", "audiocraft": "Meta AudioCraft", "lyria_realtime": "Lyria RealTime",
+             "lyria_pro3": "Lyria 3 Pro", "lyria": "Google Lyria", "acestep_1.5": "ACE-Step 1.5", "yue": "YuE",
+             "diffrhythm": "DiffRhythm", "sonauto_v2": "Sonauto v2", "sonauto": "Sonauto", "mureka": "Mureka", "suno": "Suno",
+             "udio": "Udio"}
+
+
+def nice_gen(g: str) -> str:
+    """'riffusion_v1' -> 'Riffusion v1', 'udio' -> 'Udio', 'suno_v4.5' -> 'Suno v4.5', 'mureka_V6' -> 'Mureka V6'."""
+    if g in GEN_NAMES:
+        return GEN_NAMES[g]
+    base, _, ver = g.partition("_")
+    return GEN_NAMES.get(base, base.capitalize()) + (f" {ver}" if ver else "")
+
+
+def plain_edit(t: str) -> str:
+    """A robustness transform's name in everyday words ('tempo 1.1x (pitch kept)' -> 'made 10% faster with pitch kept')."""
+    import re
+
+    m = re.match(r"pitch ([+-])(\d+) semitones?$", t)
+    if m:
+        return f"pitch {'raised' if m.group(1) == '+' else 'lowered'} {m.group(2)} semitones"
+    m = re.match(r"(tempo|speed) ([\d.]+)x", t)
+    if m:
+        f = float(m.group(2))
+        how = f"made {abs(round(100 * (f - 1))):g}% {'faster' if f > 1 else 'slower'}"
+        return how + (" with pitch kept" if m.group(1) == "tempo" else " (pitch changes too)")
+    m = re.match(r"(MP3|AAC) (\d+) kbps$", t)
+    if m:
+        return f"re-saved as {m.group(2)} kbps {m.group(1)}"
+    if t.startswith("OGG"):
+        return "re-saved as OGG"
+    if t.startswith("loudness"):
+        return "loudness evened out"
+    return t
+
+
 CI_METRICS = ("balanced_accuracy", "fpr", "recall")
 
 
@@ -168,9 +222,67 @@ BAND_RISE = 0.10  # a band-limit edit that raises the human false-positive rate 
 
 WORST_CASE_COLS = ["matched_balanced_accuracy", "unseen_gen_balanced_accuracy_mean", "unseen_human_acc_fma_pre2010",
                    "unseen_human_acc_jamendo", "vocal_to_instr_balanced_accuracy", "instr_to_vocal_balanced_accuracy"]
+# each vocal/instrumental cross round, and the same-kind round that scores the same test clips (the in-domain reference)
+CROSS_ROUNDS = {"vocal_to_instr": ("train=vocal|test=instrumental", "train=instrumental|test=instrumental"),
+                "instr_to_vocal": ("train=instrumental|test=vocal", "train=vocal|test=vocal")}
 
 
-def write_config(T: pd.DataFrame) -> dict:
+def vocal_generator_confound(table: pd.DataFrame, detector: str) -> dict:
+    """Both vocal/instrumental cross rounds are partly a change of generator: open-weight models are mostly instrumental and
+    some commercial or open models only vocal, so some generators in each cross round's test set never appear in its
+    training (+ validation) clips. For each direction, split the AI test clips into generators absent from / present in
+    training and score both the cross-trained model ("cross") and the same-kind model on the same test clips ("same").
+    Returns {"vocal_to_instr": {...}, "instr_to_vocal": {...}}; a direction is left out if its rounds or predictions are
+    missing. Used by the caveat here and by write_model_card.py / make_report.py, so all three quote the same numbers."""
+    import re
+
+    rounds = {r.name: r for r in make_rounds(table, which=("vocal_instr",))}
+    pdir = RESULTS / "predictions" / detector
+    out = {}
+    for key, (cross_name, same_name) in CROSS_ROUNDS.items():
+        rc, rs = rounds.get(cross_name), rounds.get(same_name)
+        if rc is None or rs is None:
+            continue
+        files = {k: pdir / f"vocal_instr__{re.sub(r'[^A-Za-z0-9._=-]+', '_', r.name)}.csv" for k, r in (("cross", rc), ("same", rs))}
+        if not all(f.exists() for f in files.values()):
+            continue
+        fit = np.union1d(rc.train, rc.val)
+        seen = set(table.model.to_numpy()[fit][table.label.to_numpy()[fit] == 1])
+        test = table.iloc[rc.test][["clip_id", "label", "model"]]
+        novel_gens = sorted(test[(test.label == 1) & ~test.model.isin(seen)].model.unique())
+        o = {"n_ai": int((test.label == 1).sum()), "n_human": int((test.label == 0).sum()),
+             "n_novel": int(((test.label == 1) & test.model.isin(novel_gens)).sum()), "novel_generators": novel_gens}
+        for k, f in files.items():
+            d = test.merge(pd.read_csv(f)[["clip_id", "p_ai"]], on="clip_id")
+            call = d.p_ai >= 0.5
+            ai, nov = d.label == 1, d.model.isin(novel_gens)
+            fpr = float(call[d.label == 0].mean())
+            o[f"{k}_recall_novel"] = float(call[ai & nov].mean()) if (ai & nov).any() else float("nan")
+            o[f"{k}_recall_seen"] = float(call[ai & ~nov].mean())
+            o[f"{k}_fpr"] = fpr
+            o[f"{k}_balanced_accuracy"] = (float(call[ai].mean()) + 1 - fpr) / 2
+            o[f"{k}_balanced_accuracy_seen_only"] = (o[f"{k}_recall_seen"] + 1 - fpr) / 2
+        out[key] = o
+    return out
+
+
+def weights_sha256(detector: str) -> str | None:
+    """sha256 of the detector's weight file in models/, so a copy downloaded elsewhere can be checked against it."""
+    import hashlib
+
+    from aimd import MODELS as MODEL_DIR
+
+    f = MODEL_DIR / (detector + (".pt" if detector.split("@")[0] == "resnet18_mel" else ".joblib"))
+    if not f.exists():
+        return None
+    h = hashlib.sha256()
+    with open(f, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def write_config(T: pd.DataFrame, table: pd.DataFrame | None = None) -> dict:
     """Pick predict.py's main detector by its WORST condition (not its best), and write the caveat it prints."""
     import json
 
@@ -192,7 +304,9 @@ def write_config(T: pd.DataFrame) -> dict:
     best = cand.sort_values("worst_case", ascending=False).iloc[0]
     pct = lambda x: "n/a" if pd.isna(x) else f"{100 * x:.0f}%"  # noqa: E731
     lo, hi = 0.2, 0.8  # predict.py: LIKELY HUMAN-MADE <= lo < UNCERTAIN < hi <= LIKELY AI-GENERATED
-    edits, band_warn, band_all = "Pitch/speed edits and re-encoding change scores (results/robustness.csv).", "", ""
+    # The caveat is shown on the public website under "How often is it wrong?" and printed by predict.py: plain words,
+    # no file paths or internal IDs, verdicts named as the page shows them.
+    edits, band_warn, band_all = "Pitch and speed changes and re-saving in another format change its scores.", "", ""
     rob = RESULTS / "robustness.csv"
     if rob.exists():  # name the edits that hurt this detector most, measured on the same test clips
         Rb = pd.read_csv(rob)
@@ -201,16 +315,17 @@ def write_config(T: pd.DataFrame) -> dict:
         bw = Rb[Rb["transform"].str.startswith("bandwidth")]
         Ed = Rb[(Rb["transform"] != "clean") & ~Rb["transform"].str.startswith("bandwidth")].sort_values("balanced_accuracy")
         if len(Ed):
-            edits = ("Its worst everyday edits: " + "; ".join(f"after {t}, balanced accuracy {pct(b)}" for t, b in
-                                                             zip(Ed["transform"][:3], Ed.balanced_accuracy[:3]))
-                     + (f" (unedited: {pct(clean.iloc[0])}; " if len(clean) else " (") + "50% = coin flip; results/robustness.csv).")
+            worst3 = [f"{plain_edit(t)} ({'accuracy ' if i == 0 else ''}{pct(b)})"
+                      for i, (t, b) in enumerate(zip(Ed["transform"][:3], Ed.balanced_accuracy[:3]))]
+            edits = ("Everyday edits that hurt it most: " + (", ".join(worst3[:-1]) + " and " + worst3[-1] if len(worst3) > 1 else worst3[0])
+                     + (f", against {pct(clean.iloc[0])} unedited." if len(clean) else "."))
         clean_fpr = float(Rb.loc[Rb["transform"] == "clean", "fpr"].iloc[0]) if len(clean) else np.nan
         # old, phone-quality or low-sample-rate recordings: almost every 16/32 kHz clip in the data is AI. Warn only if this
         # detector actually accuses band-limited humans much more often (more than 10 points above its unedited rate)
         if len(bw) and bw.fpr.max() > clean_fpr + BAND_RISE:
             w = bw.loc[bw.fpr.idxmax()]
             band_all = (f"Human recordings with little sound above 8 kHz (old, phone-quality or low-sample-rate audio, even when saved as an "
-                        f"ordinary 44.1/48 kHz file) are often called AI: after {w['transform']}, {pct(w.fpr)} of human test clips "
+                        f"ordinary file) are often called AI: with the treble cut off, {pct(w.fpr)} of human test songs were "
                         f"(unedited: {pct(Rb.loc[Rb['transform'] == 'clean', 'fpr'].iloc[0]) if len(clean) else 'n/a'}). ")
             band_warn = ("The main detector treats missing high frequencies as a sign of AI: after "
                          + "; after ".join(f"{t}, it wrongly called {pct(f)} of human test clips AI" for t, f in zip(bw["transform"], bw.fpr))
@@ -238,29 +353,46 @@ def write_config(T: pd.DataFrame) -> dict:
         Q = Q[(Q.label == 0) & (Q.source == "fma_pre2010")]
         lim = Q.band_8k_12k_db.isna() | (Q.band_8k_12k_db < -45)  # NaN = real bandwidth ends below ~10 kHz
         if lim.any() and (~lim).any():
-            old_rec = (f"Old or lo-fi human recordings (almost no sound above 8 kHz) are still wrongly called AI more often: "
-                       f"{pct((Q[lim].p_ai >= 0.5).mean())} of such old FMA tracks, against {pct((Q[~lim].p_ai >= 0.5).mean())} of the rest. ")
-    caveat = (f"When this detector type was retrained with FMA left out, it wrongly called "
-              f"{pct(1 - best.get('unseen_human_acc_fma_pre2010', np.nan))} of FMA tracks (uploaded before 2010) AI-generated; "
-              f"retrained without Jamendo, {pct(1 - best.get('unseen_human_acc_jamendo', np.nan))} of Jamendo tracks "
-              f"(counting P(AI) >= 0.5 as an AI call; this tool says LIKELY AI-GENERATED only at P(AI) >= {hi}, which still flagged "
-              f"{pct(fh)} and {pct(jh)} of those tracks, and put {pct(fu)} and {pct(ju)} in UNCERTAIN). Treat those as "
-              "estimates of how often it accuses real musicians whose music is unlike its training data (the copy shipped here did "
-              f"train on FMA, Jamendo and some GuitarSet). Retrained without a given AI generator, it caught {pct(best.get('unseen_gen_recall_mean', np.nan))} "
-              f"of that generator's tracks on average (worst: {best.get('unseen_gen_worst_generator', '?')}, "
-              f"{pct(best.get('unseen_gen_recall_worst', np.nan))}); with a whole model family held out (like music from a new company), "
-              f"as few as {pct(best.get('unseen_family_recall_worst', np.nan))} (all {best.get('unseen_family_worst', '?')} versions). "
-              f"Retrained on vocal music only, it scored {pct(best.get('vocal_to_instr_balanced_accuracy', np.nan))} balanced accuracy on "
-              f"instrumentals and wrongly called {pct(best.get('vocal_to_instr_fpr', np.nan))} of human instrumentals AI-generated "
-              f"(retrained on instrumentals only: {pct(best.get('instr_to_vocal_balanced_accuracy', np.nan))} on vocal music). "
-              f"On the matched test split (new artists, otherwise familiar music) it scored {pct(best.get('matched_balanced_accuracy', np.nan))} "
-              f"and wrongly called {pct(best.get('matched_fpr', np.nan))} of human tracks AI-generated. "
+            old_rec = (f"Old or lo-fi human recordings are still wrongly called AI more often: {pct((Q[lim].p_ai >= 0.5).mean())} of the "
+                       f"{int(lim.sum())} pre-2010 FMA tracks with almost no sound above 8 kHz, against {pct((Q[~lim].p_ai >= 0.5).mean())} "
+                       f"of the other {int((~lim).sum())}. ")
+    # both cross rounds are partly a change of generator: some test generators never appear in training. That lowers the
+    # share of AI caught (recall) only, so the clause qualifies the accuracy figure, not the human false-positive rate.
+    vc = vocal_generator_confound(table if table is not None else load_table(REPO), best.detector)
+    vi, iv = vc.get("vocal_to_instr", {}), vc.get("instr_to_vocal", {})
+    why_vi = (f", partly because {pct(vi['n_novel'] / vi['n_ai'])} of the AI instrumentals in that test came from generators "
+              "missing from its vocal training" if vi.get("n_novel") else "")
+    why_iv = (f"; there, too, {pct(iv['n_novel'] / iv['n_ai'])} of the AI songs came from generators missing from its training"
+              if iv.get("n_novel") else "")
+    b = lambda k: best.get(k, np.nan)  # noqa: E731
+    caveat = (f"These numbers come from retraining this type of detector with one kind of music left out and testing it on what it "
+              f"had not seen. 'Accuracy' here is the average of two shares, AI tracks caught and human tracks correctly passed, so 50% "
+              f"is a coin flip. On songs by new artists whose music resembles its training data, its accuracy was "
+              f"{pct(b('matched_balanced_accuracy'))} and it wrongly called {pct(b('matched_fpr'))} of human songs AI-generated. "
+              f"On music from a site it never trained on, it did worse: retrained without FMA (the Free Music Archive), it wrongly "
+              f"called {pct(1 - b('unseen_human_acc_fma_pre2010'))} of FMA's pre-2010 tracks AI-generated; retrained without Jamendo "
+              f"(another free-music site), {pct(1 - b('unseen_human_acc_jamendo'))} of Jamendo tracks. Those counts treat a P(AI) of "
+              f"0.5 or above as an AI call; this tool says 'likely AI-generated' only at {hi} or above, which still flagged {pct(fh)} "
+              f"of those FMA tracks and {pct(jh)} of those Jamendo tracks, and called {pct(fu)} and {pct(ju)} 'uncertain'. Treat "
+              "these as estimates of how often it accuses real musicians whose music is unlike its training data (the copy used "
+              "here did train on FMA, Jamendo and some GuitarSet solo-guitar recordings). Retrained without one AI music "
+              f"generator, it caught {pct(b('unseen_gen_recall_mean'))} of that generator's tracks on average (worst: "
+              f"{nice_gen(str(best.get('unseen_gen_worst_generator', '?')))}, {pct(b('unseen_gen_recall_worst'))}); with a whole "
+              f"family of models left out (like music from a new company), as few as {pct(b('unseen_family_recall_worst'))} (all "
+              f"{nice_gen(str(best.get('unseen_family_worst', '?')))} versions). Retrained on songs with vocals only, its accuracy "
+              f"on instrumentals was {pct(b('vocal_to_instr_balanced_accuracy'))}{why_vi}, and it wrongly called "
+              f"{pct(b('vocal_to_instr_fpr'))} of human instrumentals AI-generated ({pct(b('instr_to_instr_fpr'))} when trained on "
+              f"instrumentals). Retrained on instrumentals only, its accuracy on songs with vocals was "
+              f"{pct(b('instr_to_vocal_balanced_accuracy'))}{why_iv}. "
               f"Rates are per 10-second excerpt. {edits} {band_all}{old_rec}"
               "A score is one piece of evidence, never proof that a musician used AI.")
     cfg = {"primary": best.detector, "selected_by": "highest worst-case score over: " + ", ".join(cols),
            "worst_case_score": float(best.worst_case), "uncertain_band": [lo, hi], "caveat": caveat,
            # share of unseen human tracks predict.py would call LIKELY AI (>= hi) and UNCERTAIN, for the model card
            "unseen_human_verdicts": {"fma_pre2010": [fh, fu], "jamendo": [jh, ju]}}
+    sha = weights_sha256(best.detector)
+    if sha:  # lets the website check that the weights it downloads are the ones these numbers came from
+        cfg["weights_sha256"] = sha
     if band_warn:
         cfg["bandlimit_warning"] = band_warn  # predict.py prints it for files below 44.1 kHz or at 96 kbps or less
     MODEL_DIR.mkdir(exist_ok=True)
@@ -273,6 +405,19 @@ def md_table(T: pd.DataFrame) -> str:
     def f(x, pct=True):
         return "-" if pd.isna(x) else (f"{100 * x:.1f}%" if pct else f"{x:.3f}")
 
+    def fma_cell(r) -> str:
+        acc, lo, hi = (getattr(r, k, np.nan) for k in ("unseen_human_acc_fma_pre2010", "unseen_human_acc_fma_pre2010_lo",
+                                                       "unseen_human_acc_fma_pre2010_hi"))
+        dag = "†" if r.detector in IN_DOMAIN else ""
+        if pd.isna(acc):
+            return f"-{dag}"
+        return f"**{f(acc)}**{dag}" + ("" if pd.isna(lo) or pd.isna(hi) else f" ({f(lo)}-{f(hi)})")
+
+    def cross_cell(r, cross: str, same: str) -> str:
+        # an off-the-shelf detector is never retrained, so its "in-domain" score would just repeat the cell
+        ref = ": n/a, not retrained" if r.detector.split("@")[0] in PRETRAINED else " " + f(getattr(r, same, np.nan))
+        return f"{f(getattr(r, cross, np.nan))} (in-domain{ref})"
+
     lines = ["| Model | Matched: bal. acc / FPR | Unseen generator: bal. acc (mean) / worst caught | "
              "**Unseen human: accuracy on FMA pre-2010** | Unseen human: Jamendo | Vocal→Instr bal. acc | Instr→Vocal bal. acc |",
              "|---|---|---|---|---|---|---|"]
@@ -281,13 +426,15 @@ def md_table(T: pd.DataFrame) -> str:
         lines.append(
             f"| {r.model}{f' *(partial: {r.partial})*' if r.partial else ''} | {f(getattr(r, 'matched_balanced_accuracy', np.nan))} / {f(getattr(r, 'matched_fpr', np.nan))} "
             f"| {f(getattr(r, 'unseen_gen_balanced_accuracy_mean', np.nan))} / {f(getattr(r, 'unseen_gen_recall_worst', np.nan))} ({g}) "
-            f"| **{f(getattr(r, 'unseen_human_acc_fma_pre2010', np.nan))}**{'†' if r.detector in IN_DOMAIN else ''} "
-            f"({f(getattr(r, 'unseen_human_acc_fma_pre2010_lo', np.nan))}-{f(getattr(r, 'unseen_human_acc_fma_pre2010_hi', np.nan))}) "
+            f"| {fma_cell(r)} "
             f"| {f(getattr(r, 'unseen_human_acc_jamendo', np.nan))} "
-            f"| {f(getattr(r, 'vocal_to_instr_balanced_accuracy', np.nan))} (in-domain {f(getattr(r, 'instr_to_instr_balanced_accuracy', np.nan))}) "
-            f"| {f(getattr(r, 'instr_to_vocal_balanced_accuracy', np.nan))} (in-domain {f(getattr(r, 'vocal_to_vocal_balanced_accuracy', np.nan))}) |")
+            f"| {cross_cell(r, 'vocal_to_instr_balanced_accuracy', 'instr_to_instr_balanced_accuracy')} "
+            f"| {cross_cell(r, 'instr_to_vocal_balanced_accuracy', 'vocal_to_vocal_balanced_accuracy')} |")
     if any(T.detector.isin(IN_DOMAIN)):
         lines += ["", "† The public lofcz model was trained on FMA, so FMA is not unseen for it: its FMA cells are left blank."]
+    if any(T.detector.str.split("@").str[0].isin(PRETRAINED)):
+        lines += ["", "The off-the-shelf detectors are scored as published and never retrained, so they have no in-domain "
+                  "vocal/instrumental reference (n/a)."]
     lines += ["", "Unseen generator: mean over leave-one-version-out rounds; 'worst caught' is the lowest detection rate in any of them. "
               "Whole-family hold-outs are in results/unseen_generator_table.csv. For the off-the-shelf detectors, Suno v3.5 and "
               "Udio v1 are left out of that mean because those detectors were trained on them."]
@@ -319,14 +466,51 @@ def fig_four_conditions(T: pd.DataFrame) -> None:
     _dot_panel(axes[0], labels, get("matched_balanced_accuracy"), get("matched_balanced_accuracy"), get("matched_balanced_accuracy"),
                "Matched (lab setting)", "balanced accuracy", 0.5)
     _dot_panel(axes[1], labels, get("unseen_gen_balanced_accuracy_mean"), get("unseen_gen_recall_worst"), get("unseen_gen_balanced_accuracy_mean"),
-               "Unseen generator", "balanced accuracy (mean); line to worst detection rate", 0.5)
+               "Unseen generator", "balanced accuracy (mean)\nline: down to worst detection rate", 0.5)
     _dot_panel(axes[2], labels, get("unseen_human_acc_fma_pre2010"), get("unseen_human_acc_fma_pre2010_lo"), get("unseen_human_acc_fma_pre2010_hi"),
-               "Unseen human music (headline)", "accuracy on FMA uploads before 2010 (95% CI)")
+               "Unseen human music (headline)", "accuracy on FMA pre-2010\n(95% CI)")
     _dot_panel(axes[3], labels, get("vocal_to_instr_balanced_accuracy"), get("vocal_to_instr_balanced_accuracy"), get("vocal_to_instr_balanced_accuracy"),
                "Vocal → instrumental", "balanced accuracy", 0.5)
     fig.suptitle("Every detector under the four evaluation conditions", x=0.01, ha="left", fontsize=12, fontweight="semibold")
     fig.tight_layout()
     fig.savefig(FIG / "four_conditions.png")
+    plt.close(fig)
+
+
+def fig_robustness() -> None:
+    """Draw results/figures/robustness.png from results/robustness.csv with short, unique detector labels. The one place
+    this figure is drawn: robustness.py calls it after writing the CSV, and evaluate.py redraws it from the same CSV."""
+    rob = RESULTS / "robustness.csv"
+    if not rob.exists():
+        return
+    from aimd.augment import BRIEF_SUITE
+
+    S.apply()
+    FIG.mkdir(parents=True, exist_ok=True)
+
+    R = pd.read_csv(rob)
+    dets = ordered(R.detector)
+    edits = [t for t in BRIEF_SUITE if t in set(R["transform"])] + sorted(set(R["transform"]) - set(BRIEF_SUITE))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 0.42 * len(edits) + 1.6), sharey=True)
+    for ax, (metric, title) in zip(axes, (("balanced_accuracy", "Balanced accuracy"), ("fnr", "AI tracks missed (FNR)"),
+                                          ("fpr", "Human tracks accused (FPR)"))):
+        M = R.pivot(index="transform", columns="detector", values=metric).reindex(edits)[dets]
+        ax.imshow(M.to_numpy(float), cmap=S.SEQ, vmin=0, vmax=1, aspect="auto")
+        for i in range(M.shape[0]):
+            for j in range(M.shape[1]):
+                v = M.iat[i, j]
+                if not pd.isna(v):
+                    ax.text(j, i, f"{v:.0%}", ha="center", va="center", fontsize=7, color=S.text_on(v))
+        ax.set_xticks(range(len(dets)), [short_label(d) for d in dets], rotation=40, ha="right")
+        ax.set_yticks(range(M.shape[0]), M.index)
+        ax.set_title(title, loc="left")
+        ax.grid(False)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+    fig.suptitle("Robustness: the same matched test clips after everyday edits (applied to human and AI alike; [MP3] = trained on "
+                 "codec-equalised audio)", x=0.01, ha="left")
+    fig.tight_layout()
+    fig.savefig(FIG / "robustness.png")
     plt.close(fig)
 
 
@@ -417,7 +601,7 @@ def main() -> None:
     T.to_csv(RESULTS / "results_table.csv", index=False)
     (RESULTS / "results_table.md").write_text(md_table(T), encoding="utf-8")
     print(md_table(T))
-    write_config(T)
+    write_config(T, table)
 
     G = R[R.condition == "unseen_generator"].pivot(index="detector", columns="round", values="recall")
     if len(G):
@@ -468,6 +652,7 @@ def main() -> None:
             fig_dumbbell(D, FIG / "genre.png", "Your genre hypothesis: does a detector fail on a genre it never saw? (AUC)",
                          "genre_seen_in_training", "genre_held_out", "AUC")
     fig_four_conditions(T)
+    fig_robustness()
     fig_confusions(P)
     print(f"\nTables in {RESULTS}, figures in {FIG}")
 

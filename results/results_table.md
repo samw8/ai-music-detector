@@ -10,9 +10,11 @@
 | 4. CLAP embedding + linear head | 88.0% / 11.4% | 79.7% / 4.3% (riffusion_v1) | **68.7%** (65.2%-72.0%) | 61.3% | 63.8% (in-domain 88.0%) | 77.1% (in-domain 92.5%) |
 | Ablation: features + LR, no file-format features | 69.2% / 37.4% | 66.5% / 7.0% (riffusion_v1) | **38.3%** (34.7%-42.0%) | 47.6% | 59.3% (in-domain 68.5%) | 64.5% (in-domain 76.6%) |
 | Ablation: features + LR, no file-format features [codec-equalised: all audio via MP3 192k] | 69.5% / 36.4% | 66.6% / 5.7% (riffusion_v1) | **40.1%** (36.4%-43.8%) | 47.0% | 59.1% (in-domain 68.5%) | 64.4% (in-domain 76.0%) |
-| Off the shelf: SONICS SpecTTTra-α 5s (not retrained) | 60.3% / 8.1% | 58.6% / 0.3% (audioldm2) | **92.4%** (90.4%-94.1%) | 94.0% | 51.1% (in-domain 51.1%) | 70.5% (in-domain 70.5%) |
-| Off the shelf: public Deezer-method LR, lofcz (not retrained) | 53.5% / 0.0% | 53.6% / 0.0% (acestep_1.5) | **-**† (---) | 99.9% | 52.8% (in-domain 52.8%) | 54.3% (in-domain 54.3%) |
+| Off the shelf: SONICS SpecTTTra-α 5s (not retrained) | 60.3% / 8.1% | 58.6% / 0.3% (audioldm2) | **92.4%** (90.4%-94.1%) | 94.0% | 51.1% (in-domain: n/a, not retrained) | 70.5% (in-domain: n/a, not retrained) |
+| Off the shelf: public Deezer-method LR, lofcz (not retrained) | 53.5% / 0.0% | 53.6% / 0.0% (acestep_1.5) | -† | 99.9% | 52.8% (in-domain: n/a, not retrained) | 54.3% (in-domain: n/a, not retrained) |
 
 † The public lofcz model was trained on FMA, so FMA is not unseen for it: its FMA cells are left blank.
+
+The off-the-shelf detectors are scored as published and never retrained, so they have no in-domain vocal/instrumental reference (n/a).
 
 Unseen generator: mean over leave-one-version-out rounds; 'worst caught' is the lowest detection rate in any of them. Whole-family hold-outs are in results/unseen_generator_table.csv. For the off-the-shelf detectors, Suno v3.5 and Udio v1 are left out of that mean because those detectors were trained on them.

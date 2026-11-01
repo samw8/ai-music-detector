@@ -2,7 +2,9 @@
 (webapp/streamlit_app.py on Streamlit Community Cloud) downloads it at start-up.
 
     hf auth login                      # once, with a Hugging Face access token (Write)
-    python webapp/upload_model.py      # again after every retrain of the ResNet18, then reboot the online app
+    python webapp/upload_model.py      # after every retrain: run evaluate, this, push models/config.json, reboot the app
+
+The online page refuses to start unless these weights match the fingerprint in the pushed models/config.json.
 
 The weights are not cleared for public release (MODEL_CARD.md, legal notes), so the repository stays private:
 visitors can use the detector but not download it. This script never handles tokens.

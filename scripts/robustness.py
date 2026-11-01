@@ -8,7 +8,8 @@ Edits (the brief's list): MP3 128 kbps, OGG, AAC, +/-2 semitone pitch shift, 0.9
 Unlike MuseBench (which edits only the AI tracks), the edits are applied to human
 AND AI clips, so we see both missed AI (FNR) and newly accused humans (FPR).
 
-Output: results/robustness.csv and results/figures/robustness.png
+Output: results/robustness.csv and results/figures/robustness.png (drawn by evaluate.fig_robustness, the one place
+that figure is drawn, so it always has the same short, unique detector labels)
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # scripts/, for evaluate.fig_robustness (any working folder)
 
 from aimd import DATA, REPO, RESULTS  # noqa: E402
 from aimd.augment import BRIEF_SUITE, apply  # noqa: E402
@@ -53,10 +55,8 @@ def _transform(args):
 def main() -> None:
     import pandas as pd
 
-    from aimd import plotstyle as S
     from aimd.infer import Detectors
     from aimd.metrics import summarize
-    from aimd.models import label, ordered
     from aimd.splits import base_split, load_table
 
     ap = argparse.ArgumentParser()
@@ -93,30 +93,10 @@ def main() -> None:
             pd.DataFrame(rows).to_csv(out_csv, index=False)
             print(f"  {name}: " + ", ".join(f"{m} bal.acc {summarize(sel.label, p)['balanced_accuracy']:.3f}" for m, p in preds.items()), flush=True)
 
-    R = pd.DataFrame(rows)
-    S.apply()
-    import matplotlib.pyplot as plt
+    # the figure is drawn in one place, with short unique detector labels, from the CSV just written
+    from evaluate import fig_robustness
 
-    dets = ordered(R.detector)
-    fig, axes = plt.subplots(1, 3, figsize=(15, 0.42 * len(BRIEF_SUITE) + 1.6), sharey=True)
-    for ax, (metric, title) in zip(axes, (("balanced_accuracy", "Balanced accuracy"), ("fnr", "AI tracks missed (FNR)"),
-                                          ("fpr", "Human tracks accused (FPR)"))):
-        M = R.pivot(index="transform", columns="detector", values=metric).reindex(list(BRIEF_SUITE))[dets]
-        im = ax.imshow(M.to_numpy(float), cmap=S.SEQ, vmin=0, vmax=1, aspect="auto")
-        for i in range(M.shape[0]):
-            for j in range(M.shape[1]):
-                v = M.iat[i, j]
-                ax.text(j, i, f"{v:.0%}", ha="center", va="center", fontsize=7, color=S.text_on(v))
-        ax.set_xticks(range(len(dets)), [label(d).split(" (")[0][:26] for d in dets], rotation=40, ha="right")
-        ax.set_yticks(range(M.shape[0]), M.index)
-        ax.set_title(title, loc="left")
-        ax.grid(False)
-        for sp in ax.spines.values():
-            sp.set_visible(False)
-    fig.suptitle("Robustness: the same test clips after everyday edits (applied to human and AI alike)", x=0.01, ha="left")
-    fig.tight_layout()
-    (RESULTS / "figures").mkdir(parents=True, exist_ok=True)
-    fig.savefig(RESULTS / "figures" / "robustness.png")
+    fig_robustness()
     print(f"wrote {out_csv} and results/figures/robustness.png")
 
 

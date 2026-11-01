@@ -4,7 +4,8 @@ song's official 30-second preview clip, the one those services already play publ
 No full song is ever downloaded: Spotify, Apple Music and YouTube audio is copy-protected and their terms
 forbid downloading it. Deezer and Apple publish preview clips through free public APIs (no key needed);
 for Spotify and YouTube links only the song's title and artist are read, and the same song's preview is
-then looked up on Deezer (or Apple). The preview is analysed in memory and never stored.
+then looked up on Deezer (or Apple). The preview is written to a temporary file for scoring and deleted
+straight after; nothing is kept.
 
 A pasted URL is never fetched as is: links are reduced to an ID and looked up through the services' public
 APIs. The one exception is a share link on a music service's own short-link host (SHORT_HOSTS), which is
@@ -16,6 +17,7 @@ import html
 import http.client
 import json
 import re
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -98,6 +100,31 @@ def _page(url: str) -> tuple[str, str]:
 
 def _json(url: str) -> dict:
     return json.loads(_get(url, 3_000_000)[1])
+
+
+def _log(service: str, err: object) -> None:
+    """A failed call to a music service, for the app's logs (visitors see a plain message instead)."""
+    print(f"[links] {service}: {err!r}", file=sys.stderr, flush=True)
+
+
+def _search_json(service: str, url: str, key: str) -> list[dict] | None:
+    """A search's result list, or None when the service is down, slow or busy (Deezer's quota reply comes
+    with HTTP 200, so it gets one retry like _deezer_track)."""
+    for attempt in range(2):
+        try:
+            d = _json(url)
+        except Exception as e:  # noqa: BLE001
+            _log(service, e)
+            return None
+        err = d.get("error") if isinstance(d, dict) else "not a JSON object"
+        if not err:
+            return d.get(key) or []
+        if attempt == 0 and isinstance(err, dict) and err.get("code") in (4, 700):
+            time.sleep(1)
+            continue
+        _log(service, err)
+        return None
+    return None
 
 
 def _meta(page: str, prop: str) -> str:
@@ -394,13 +421,14 @@ def _find(readings: list[_Reading], asked_via: str, free_text: str = "", country
 
     pool: list[_Cand] = []  # every candidate, in the order the services ranked them
     seen = set()
+    answered = False  # some search got an answer (even an empty one); if none did, the services are down
     for q in queries:
         if exact(best_of(pool)):
             break
-        try:
-            data = _json("https://api.deezer.com/search?" + urllib.parse.urlencode({"q": q, "limit": 15})).get("data", [])
-        except Exception:  # noqa: BLE001 - Deezer down or busy: Apple is tried below
-            data = []
+        data = _search_json("Deezer search", "https://api.deezer.com/search?" + urllib.parse.urlencode({"q": q, "limit": 15}), "data")
+        if data is None:  # Deezer down or busy: no point waiting on its other searches; Apple is tried below
+            break
+        answered = True
         for d in data:
             if d.get("id") in seen or not d.get("preview"):
                 continue
@@ -420,10 +448,10 @@ def _find(readings: list[_Reading], asked_via: str, free_text: str = "", country
             break
         store, term = apple[i]
         params = {"term": term, "entity": "song", "limit": 15} | ({"country": store} if store else {})
-        try:
-            results = _json("https://itunes.apple.com/search?" + urllib.parse.urlencode(params)).get("results", [])
-        except Exception:  # noqa: BLE001 - Apple rate-limits shared servers; keep what Deezer found
-            results = []
+        results = _search_json("Apple search", "https://itunes.apple.com/search?" + urllib.parse.urlencode(params), "results")
+        if results is None:  # Apple rate-limits shared servers: keep what Deezer found
+            break
+        answered = True
         for r in results:
             if r.get("kind") != "song" or not r.get("previewUrl"):
                 continue
@@ -447,6 +475,9 @@ def _find(readings: list[_Reading], asked_via: str, free_text: str = "", country
         if c := next((c for c in pool if c.artist_sim >= 0.9 and not _non_latin(c.match.title)), None):
             c.score, best, crossed = UNSURE, c, True
     asked = free_text or (" ".join(f"{readings[0].query_artist} {readings[0].title}".split()) if readings else "")
+    if best is None and not answered and queries:
+        raise LookupError_("Deezer and Apple are not answering right now, so the song cannot be looked up. "
+                           "Wait a minute and press Check again, or upload the audio file.")
     if best is None:
         raise LookupError_(f"Could not find a preview clip for \"{asked}\". Try 'Artist - Song', or upload the audio file.")
     m = best.match
@@ -799,7 +830,7 @@ def _resolve(text: str) -> Match:
 
 
 def fetch_preview(m: Match) -> bytes:
-    """The 30-second preview clip as MP3/AAC bytes (kept in memory only). Deezer's preview links expire after
+    """The 30-second preview clip as MP3/AAC bytes (the page scores it and deletes it). Deezer's preview links expire after
     15 minutes (a visitor may take that long to confirm a match), so an expired one is asked for again."""
     try:
         return _get(m.preview_url, MAX_PREVIEW_BYTES)[1]

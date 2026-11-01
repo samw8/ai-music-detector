@@ -1,0 +1,9 @@
+# Settings for the online page (Streamlit Community Cloud runs the app from the repository root).
+
+[client]
+# An unexpected error shows a generic message in the browser; the details go only to the app's logs.
+showErrorDetails = "none"
+
+[browser]
+# Don't send visitors' usage statistics to Streamlit.
+gatherUsageStats = false

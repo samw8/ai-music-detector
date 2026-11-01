@@ -16,14 +16,18 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from aimd import MODELS as MODEL_DIR  # noqa: E402
 from aimd import RESULTS  # noqa: E402
 from aimd.cnn import FMAX  # noqa: E402
 from aimd.models import PRETRAINED, label, ordered  # noqa: E402
 from aimd.splits import MIN_GEN_CLIPS, base_split, load_table  # noqa: E402
+from evaluate import vocal_generator_confound  # noqa: E402  (same numbers as the model card and the caveat)
 
 FIG = RESULTS / "figures"
+HIST_LICENCE = "Sound Recording Common Law Protection"  # how FMA tags its digitised early commercial 78-rpm records
+WEBSITE = "https://who-gets-called-ai.streamlit.app"
 
 
 def slug_round(s: str) -> str:
@@ -277,12 +281,12 @@ def main() -> None:
                 """The headline set (FMA pre-2010) split by content: tracks with almost no sound above 8 kHz vs the rest."""
                 if feats8 is None or not pred_csv.exists():
                     return None
-                Pf = (pd.read_csv(pred_csv).merge(man[["clip_id", "orig_sr", "source", "genre_meta"]], on="clip_id")
+                Pf = (pd.read_csv(pred_csv).merge(man[["clip_id", "orig_sr", "source", "license"]], on="clip_id")
                       .merge(feats8, on="clip_id", how="left"))
                 Pf = Pf[(Pf.label == 0) & (Pf.source == "fma_pre2010")]
                 lim = Pf.band_8k_12k_db.isna() | (Pf.band_8k_12k_db < -45)  # NaN = real bandwidth ends below ~10 kHz
                 Lm, Rest = Pf[lim], Pf[~lim]
-                ot = Lm[Lm.genre_meta == "Old-Time / Historic"]
+                ot = Lm[Lm.license.astype(str).str.contains(HIST_LICENCE, regex=False)]  # FMA's tag for historic 78-rpm records
                 return {"n": len(Pf), "n_lim": len(Lm), "n_lim44": int((Lm.orig_sr >= 44100).sum()), "share": lim.mean(),
                         "fpr_lim": (Lm.p_ai >= 0.5).mean(), "fpr_rest": (Rest.p_ai >= 0.5).mean(), "n_rest": len(Rest),
                         "fp_lim": int((Lm.p_ai >= 0.5).sum()), "fp": int((Pf.p_ai >= 0.5).sum()),
@@ -296,7 +300,7 @@ def main() -> None:
                     f" It matters for the headline. Of the {cs['n']} pre-2010 FMA tracks, {cs['n_lim']} ({pct(cs['share'])}) have almost no sound "
                     f"above 8 kHz, {cs['n_lim44']} of them stored as ordinary 44.1 kHz or higher files. The main detector calls "
                     f"{pct(cs['fpr_lim'])} of them AI against {pct(cs['fpr_rest'])} of the other {cs['n_rest']}, so they account for "
-                    f"{cs['fp_lim']} of its {cs['fp']} false accusations there ({cs['fp_ot']} of them from {cs['n_ot']} Old-Time / Historic 78-rpm transfers).")
+                    f"{cs['fp_lim']} of its {cs['fp']} false accusations there ({cs['fp_ot']} of them from the {cs['n_ot']} tagged as historic 78-rpm records).")
                 band_note = (f"<p class='caution col'><b>A shortcut to know about.</b> In this data, {int((lowsr.label == 1).sum()):,} of the "
                              f"{len(lowsr):,} clips whose original file was 32 kHz or lower are AI. The main detector learned that missing high "
                              "frequencies mean AI: when the same human test clips are band-limited, it wrongly calls "
@@ -337,9 +341,9 @@ def main() -> None:
                               f"retrained with its spectrogram capped at {FMAX / 1000:g} kHz, below the lowest bandwidth of any file in the data, "
                               f"and {still} that shortcut. Every number below comes from the same rounds and test clips."
                               + ("" if not (cs and not shortcut) else
-                                 f" Genuinely old recordings are still harder than modern ones: of the {cs['n']} pre-2010 FMA tracks, the "
-                                 f"{cs['n_lim']} with almost no sound above 8 kHz (old or lo-fi recordings, {cs['n_ot']} of them 78-rpm transfers) are wrongly called AI "
-                                 f"{pct(cs['fpr_lim'])} of the time, against {pct(cs['fpr_rest'])} for the rest. Band-limiting a modern "
+                                 f" Genuinely old recordings are still harder than modern ones: it wrongly calls {pct(cs['fpr_lim'])} of the "
+                                 f"{cs['n_lim']} pre-2010 FMA tracks with almost no sound above 8 kHz AI (old or lo-fi recordings, {cs['n_ot']} of "
+                                 f"them tagged as historic 78-rpm records), against {pct(cs['fpr_rest'])} of the other {cs['n_rest']}. Band-limiting a modern "
                                  f"recording at 8 kHz, above the {FMAX / 1000:g} kHz the detector sees, no longer changes the verdict, so the "
                                  "missing top octave is not the cause; whether a narrower bandwidth (most of these tracks also have little "
                                  "sound at 5-8 kHz) or another trait such as surface noise is the cause was not tested.")
@@ -351,10 +355,11 @@ def main() -> None:
                  "The main detector's spectrogram is capped below the lowest bandwidth in the data so the missing top octave of 16 and 32 kHz "
                  "files cannot be used; the interpretable feature models still see the format traces, which is what the 'no file-format "
                  "features' ablation and the codec-equalised variants measure.")
-    harm = (RESULTS / "harmony_probe.md").read_text(encoding="utf-8") if (RESULTS / "harmony_probe.md").exists() else ""
+    harm_md, harm_csv = RESULTS / "harmony_probe.md", RESULTS / "harmony_probe.csv"  # optional step; the CSV is not published
+    harm = harm_md.read_text(encoding="utf-8") if harm_md.exists() and harm_csv.exists() else ""
     harm_line = ""
     if harm:
-        H = pd.read_csv(RESULTS / "harmony_probe.csv")
+        H = pd.read_csv(harm_csv)
         from sklearn.metrics import roc_auc_score
         a = roc_auc_score(H.label[H.harm_nondiatonic_rate.notna()], H.harm_nondiatonic_rate.dropna())
         k = roc_auc_score(H.label[H.harm_key_instability.notna()], H.harm_key_instability.dropna())
@@ -400,15 +405,55 @@ def main() -> None:
     ph_note = "".join(f" (the off-the-shelf {html.escape(label(d).replace('Off the shelf: ', '').replace(' (not retrained)', ''))}, not retrained, "
                       f"wrongly flags only {pct(1 - T.loc[d, 'unseen_human_acc_fma_pre2010'])} of those FMA tracks and "
                       f"{pct(1 - T.loc[d, 'unseen_human_acc_jamendo'])} of the Jamendo tracks, "
-                      f"but it catches only {pct(T.loc[d, 'matched_recall'], 0)} of matched AI tracks)" for d in ph)
-    mb = ("MuseBench, where a fully trained ResNet18 scored 100% in-domain and passed only 28.4% of old FMA tracks")
-    if best_m != best_h:
-        pattern = ("The model that wins in the lab is not the one that accuses the fewest unfamiliar human tracks. That is the pattern of "
-                   f"{mb}, reproduced here on different data with different generators.")
+                      f"but it catches only {pct(T.loc[d, 'matched_recall'], 0)} of matched AI tracks: matched balanced accuracy "
+                      f"{pct(T.loc[d, 'matched_balanced_accuracy'])}, unseen generators {pct(T.loc[d, 'unseen_gen_balanced_accuracy_mean'])}, "
+                      f"vocal→instrumental {pct(T.loc[d, 'vocal_to_instr_balanced_accuracy'])}, instrumental→vocal "
+                      f"{pct(T.loc[d, 'instr_to_vocal_balanced_accuracy'])})" for d in ph)
+
+    # every headline number carries the other conditions beside it (the project's rule: never one condition alone)
+    def human_txt(r) -> str:
+        return f"unseen FMA tracks falsely called AI {pct(1 - r.unseen_human_acc_fma_pre2010)}, unseen Jamendo {pct(1 - r.unseen_human_acc_jamendo)}"
+
+    def matched_txt(r) -> str:
+        return f"matched split balanced accuracy {pct(r.matched_balanced_accuracy)} ({pct(r.matched_fpr)} of human tracks falsely called AI)"
+
+    def unseen_gen_txt(r) -> str:
+        return (f"unseen generators: balanced accuracy {pct(r.unseen_gen_balanced_accuracy_mean)} with one version held out (caught "
+                f"{pct(r.unseen_gen_recall_mean, 0)} on average, worst {pct(r.unseen_gen_recall_worst, 0)}, "
+                f"{html.escape(str(r.unseen_gen_worst_generator))}), {pct(r.unseen_family_balanced_accuracy_mean)} with a whole family "
+                f"held out ({pct(r.unseen_family_recall_worst, 0)} of {html.escape(str(r.unseen_family_worst))} caught)")
+
+    def vi_txt(r) -> str:
+        return (f"balanced accuracy vocal→instrumental {pct(r.vocal_to_instr_balanced_accuracy)}, instrumental→vocal "
+                f"{pct(r.instr_to_vocal_balanced_accuracy)}")
+
+    mb = "MuseBench reported: there a fully trained ResNet18 scored 100% in-domain and passed only 28.4% of old FMA tracks"
+    # which detector types are statistically tied in the lab (95% artist-bootstrap intervals overlapping the best one's)?
+    Rm = R[(R.condition == "matched") & R.detector.isin([d for d in trained if "@" not in d])].set_index("detector")
+    top = Rm.balanced_accuracy.idxmax() if len(Rm) else None
+    tied = [] if top is None else [d for d in Rm.sort_values("balanced_accuracy", ascending=False).index
+                                   if Rm.loc[d, "balanced_accuracy_lo"] <= Rm.loc[top, "balanced_accuracy_hi"]
+                                   and Rm.loc[d, "balanced_accuracy_hi"] >= Rm.loc[top, "balanced_accuracy_lo"]]
+    words = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+    if len(tied) > 1 and T.loc[tied, "unseen_human_acc_fma_pre2010"].notna().all():
+        fma_t, ba_t = T.loc[tied, "unseen_human_acc_fma_pre2010"], Rm.loc[tied, "balanced_accuracy"]
+        most = fma_t.idxmax()
+        pattern = (f"The top {words.get(len(tied), len(tied))} detectors ({html.escape('; '.join(label(d) for d in tied))}) are "
+                   f"statistically tied in the lab: {100 * ba_t.min():.0f}–{100 * ba_t.max():.0f}% matched balanced accuracy, with "
+                   "overlapping 95% artist-bootstrap intervals. Yet on unseen pre-2010 FMA tracks they pass anywhere from "
+                   f"{100 * fma_t.min():.0f}% to {100 * fma_t.max():.0f}%. The lab score does not predict who gets falsely accused, "
+                   f"the same pattern {mb}. "
+                   + ("Unlike MuseBench's ResNet18, the ResNet18 trained here passed the most of them, so which design suffers is "
+                      "not fixed either." if most.split("@")[0] == "resnet18_mel"
+                      else f"Here {html.escape(label(most))} passed the most of them.")
+                   + " Their unseen-generator and vocal/instrumental scores are in the four-condition table below.")
+    elif best_m != best_h:
+        pattern = ("The model that wins in the lab is not the one that accuses the fewest unfamiliar human tracks, the same pattern "
+                   f"{mb}.")
     elif best_m == best_j:
-        pattern = f"Here the lab winner also accuses the fewest unseen human tracks on both FMA and Jamendo, unlike {mb}."
+        pattern = f"Here the lab winner also accuses the fewest unseen human tracks on both FMA and Jamendo, unlike what {mb}."
     else:
-        pattern = (f"Here the lab winner also accuses the fewest old FMA tracks among the detectors trained here, unlike {mb}. "
+        pattern = (f"Here the lab winner also accuses the fewest old FMA tracks among the detectors trained here, unlike what {mb}. "
                    f"It is not the most cautious everywhere: on unseen Jamendo music it wrongly flags {pct(1 - bh.unseen_human_acc_jamendo)} "
                    f"of human tracks, against {pct(1 - bj.unseen_human_acc_jamendo)} for {html.escape(label(best_j))}.")
     # single-version hold-outs (the table) vs whole families (harder): name the main detector's family results
@@ -428,10 +473,44 @@ def main() -> None:
     ai_t = df[(df.label == 1) & df.vocal.notna()]
     open_inst = float(ai_t[ai_t.vocal == 0].model.isin(OPEN).mean())
     comm_voc = float((~ai_t[ai_t.vocal == 1].model.isin(OPEN)).mean())
+    vconf = vocal_generator_confound(df, primary)
+    vi, iv = vconf.get("vocal_to_instr", {}), vconf.get("instr_to_vocal", {})
+    vi_conf = "" if not vi.get("n_novel") else (
+        f"<p class='col'>For the main detector the size of that effect can be measured. In the vocal → instrumental round, {vi['n_novel']} of the "
+        f"{vi['n_ai']} AI test clips come from {len(vi['novel_generators'])} generators that never appear in vocal training "
+        f"({html.escape(', '.join(vi['novel_generators']))}). Trained on vocal music, it catches {pct(vi['cross_recall_novel'])} "
+        f"of those and {pct(vi['cross_recall_seen'])} of the rest; trained on instrumentals, {pct(vi['same_recall_novel'])} and "
+        f"{pct(vi['same_recall_seen'])}. Counting only AI clips from generators present in vocal training, its vocal → instrumental "
+        f"balanced accuracy is {pct(vi['cross_balanced_accuracy_seen_only'])} instead of {pct(vi['cross_balanced_accuracy'])}. "
+        f"Separately, it wrongly calls {pct(vi['cross_fpr'])} of human instrumentals AI, against {pct(vi['same_fpr'])} when trained "
+        "on instrumentals; generator novelty does not explain that, since it affects AI clips only."
+        + (f" The reverse round has the same problem on a smaller scale: in instrumental → vocal, {iv['n_novel']} of the "
+           f"{iv['n_ai']} AI test clips come from {len(iv['novel_generators'])} generators absent from instrumental training "
+           f"({html.escape(', '.join(iv['novel_generators']))}); it catches {pct(iv['cross_recall_novel'])} of those against "
+           f"{pct(iv['cross_recall_seen'])} of the rest, and counting only seen generators its balanced accuracy is "
+           f"{pct(iv['cross_balanced_accuracy_seen_only'])} instead of {pct(iv['cross_balanced_accuracy'])}." if iv.get("n_novel") else "")
+        + " So both vocal/instrumental columns measure an unseen-generator problem as well as a vocal/instrumental one.</p>")
+    novel_note = " and ".join(f"{len(d['novel_generators'])} {k}" for k, d in (("one way", vi), ("the other", iv)) if d.get("novel_generators"))
+    gen_scope = ("Generators are kept apart on purpose only in the unseen-generator rounds: the matched and both unseen-human rounds use "
+                 "the same generators in training and test"
+                 + (f", and both vocal/instrumental cross rounds include test generators absent from training because of the data "
+                    f"({novel_note}), not by design." if novel_note else
+                    ", as do the vocal/instrumental rounds."))
     # provenance facts the legal notes depend on
     lic = df.license.astype(str)
-    n_hist = int(lic.str.contains("Common Law", case=False).sum())
+    is_hist = lic.str.contains(HIST_LICENCE, regex=False)
+    n_hist = int(is_hist.sum())
+    hist_where = ("all in FMA's 'Old-Time / Historic' genre" if (df[is_hist].genre_meta == "Old-Time / Historic").all()
+                  else f"{int((df[is_hist].genre_meta == 'Old-Time / Historic').sum())} of them in FMA's 'Old-Time / Historic' genre")
+    hist_lic = html.escape(", ".join(sorted(df[is_hist].license.unique())))
     n_scraped = int(lic.str.startswith("unclear").sum())
+    # AI datasets with a different group key for every clip (no uploader or prompt recorded): split per track only
+    per_track = sorted(s for s, g in df[df.label == 1].groupby("source") if g.artist_id_platform.nunique() == len(g))
+    per_track_txt = "" if not per_track else (
+        f" {words.get(len(per_track), str(len(per_track))).capitalize()} AI datasets ({html.escape(', '.join(per_track))}) "
+        "have a different group key for every clip (no uploader or prompt is recorded"
+        + ("; MusicGen's source publishes prompts, but the download step does not read them" if "musicgen" in per_track else "")
+        + "), so they are split per track only and clips made from the same prompt can sit on both sides.")
     ai_df = df[df.label == 1]
     fams = sorted(f for f, g in ai_df.groupby("family") if g.model.nunique() > 1)
     vc = ai_df.model.value_counts()
@@ -452,9 +531,9 @@ def main() -> None:
 <section>
   <h2>The headline</h2>
   <div class="verdict">
-    <div class="stat good"><b>{pct(1 - bh.unseen_human_acc_fma_pre2010)}</b><span>of unseen human tracks (FMA, before 2010) falsely called AI by {html.escape(label(best_h))}{' (the main detector)' if best_h == primary else ''}, the lowest rate among the detectors trained here; on unseen Jamendo tracks it falsely calls {pct(1 - bh.unseen_human_acc_jamendo)} AI{ph_note}</span></div>
-    <div class="stat bad"><b>{pct(1 - wh.unseen_human_acc_fma_pre2010)}</b><span>of those same FMA tracks falsely called AI by {html.escape(label(worst_h))}</span></div>
-    <div class="stat"><b>{pct(bm.matched_balanced_accuracy)}</b><span>the best lab score (matched split) among detectors with all four conditions finished, from {html.escape(label(best_m))}. Beside it: unseen FMA tracks falsely called AI {pct(1 - bm.unseen_human_acc_fma_pre2010)}, unseen Jamendo {pct(1 - bm.unseen_human_acc_jamendo)}; unseen generators: balanced accuracy {pct(bm.unseen_gen_balanced_accuracy_mean)} with one version held out (caught {pct(bm.unseen_gen_recall_mean, 0)} on average, worst {pct(bm.unseen_gen_recall_worst, 0)}, {html.escape(str(bm.unseen_gen_worst_generator))}), {pct(bm.unseen_family_balanced_accuracy_mean)} with a whole family held out ({pct(bm.unseen_family_recall_worst, 0)} of {html.escape(str(bm.unseen_family_worst))} caught); balanced accuracy vocal→instrumental {pct(bm.vocal_to_instr_balanced_accuracy)}, instrumental→vocal {pct(bm.instr_to_vocal_balanced_accuracy)}{hp_note}</span></div>
+    <div class="stat good"><b>{pct(1 - bh.unseen_human_acc_fma_pre2010)}</b><span>of unseen pre-2010 FMA tracks falsely called AI by {html.escape(label(best_h))}{' (the main detector)' if best_h == primary else ''}, the lowest rate among the detectors trained here; on unseen Jamendo tracks it falsely calls {pct(1 - bh.unseen_human_acc_jamendo)} AI. Beside it: {matched_txt(bh)}; {unseen_gen_txt(bh)}; {vi_txt(bh)}{ph_note}</span></div>
+    <div class="stat bad"><b>{pct(1 - wh.unseen_human_acc_fma_pre2010)}</b><span>of those same FMA tracks falsely called AI by {html.escape(label(worst_h))}; on unseen Jamendo tracks it falsely calls {pct(1 - wh.unseen_human_acc_jamendo)} AI. Beside it: {matched_txt(wh)}; {unseen_gen_txt(wh)}; {vi_txt(wh)}</span></div>
+    <div class="stat"><b>{pct(bm.matched_balanced_accuracy)}</b><span>the best lab score (matched split) among detectors with all four conditions finished, from {html.escape(label(best_m))}. Beside it: {human_txt(bm)}; {unseen_gen_txt(bm)}; {vi_txt(bm)}{hp_note}</span></div>
   </div>
   <p class="col">{pattern}</p>
   {band_note}
@@ -487,6 +566,7 @@ def main() -> None:
   <p class="col">Trained on one, tested on the other, in both directions. Caveat: {pct(open_inst, 0)} of instrumental AI clips come from open-weight models
   (MusicGen, MAGNeT, Stable Audio Open, AudioLDM2...) while {pct(comm_voc, 0)} of vocal ones come from commercial services (Suno, Udio, Mureka...),
   so this condition partly measures a change of generator too.</p>
+  {vi_conf}
   {img("vocal_instr.png", "In-domain versus cross-domain balanced accuracy.")}
 </section>
 
@@ -508,7 +588,8 @@ def main() -> None:
   <p class="col">800 matched test clips (400 human, 400 AI), human and AI alike, after re-encoding, pitch and speed changes and loudness normalisation
   (main detector shown; the retrained detectors and their MP3-trained variants in the figure; the two off-the-shelf models were not re-tested after edits).
   'clean' is the same 800 clips unedited, so it differs slightly from the full matched score. The two 'bandwidth' rows are not in the brief's list: they
-  imitate old or low-sample-rate recordings, which this data ties to AI (see the shortcut note under the headline).</p>
+  imitate old or low-sample-rate recordings, which this data ties to AI (see the shortcut note under the headline). All of these are matched-split
+  clips: the same detectors' unseen-generator, unseen-human and vocal/instrumental results are in the four-condition table above.</p>
   {rob_tab}
   {img("robustness.png", "Robustness of the retrained detectors to everyday edits (off-the-shelf models not tested).")}
 </section>
@@ -540,9 +621,11 @@ def main() -> None:
 <section>
   <h2>Data and provenance</h2>
   <p class="col">Every clip is cut and decoded the same way (ffmpeg, soxr to 48 kHz, 16-bit, one 10-second excerpt per track). Splits never share an artist,
-  a caption source, a held-out generator or a held-out human platform; the program stops if one does. No present-day commercial releases were downloaded:
-  the human clips are Creative Commons or academic (FMA, Jamendo, GuitarSet). Two exceptions need a lawyer's view before publishing: {n_hist} FMA clips
-  (genre 'Old-Time / Historic') are digitised early-20th-century commercial 78-rpm records that FMA tags 'Sound Recording Common Law Protection', and
+  an uploader or a recorded prompt/caption group, a held-out generator or a held-out human platform; the program stops if one does.{per_track_txt}
+  {gen_scope}
+  No present-day commercial releases were downloaded for training or testing (the public website does fetch 30-second store previews of them for each
+  check; see Limits): the human clips are Creative Commons or academic (FMA, Jamendo, GuitarSet). Two exceptions need a lawyer's view before publishing:
+  {n_hist} FMA clips tagged '{hist_lic}' ({hist_where}) are digitised early-20th-century commercial 78-rpm records, and
   {n_scraped:,} AI clips (Suno, Udio, Mureka, Riffusion, Sonauto) come from a scraped collection with no clear licence. No audio is redistributed.</p>
   {table(srcs[["kind", "source", "clips"]].rename(columns={"kind": "Kind", "source": "Dataset", "clips": "Clips"}))}
 </section>
@@ -575,11 +658,17 @@ def main() -> None:
     labels {pct(v_agree)} of the time (balanced), so some clips sit on the wrong side of the vocal/instrumental line. Genre labels are coarse.</li>
     <li>No Suno v6 or Udio v1.5 Allegro data, and no tracks generated by this project (tier A). Suno's flagship v6 models need a paid plan, and Udio has
     disabled audio downloads on every plan since late October 2025, so new Udio audio cannot currently be collected at all.</li>
+    <li>The main detector{' and the redesign that capped its spectrogram at ' + f'{FMAX / 1000:g}' + ' kHz (it first saw up to 16 kHz) were' if primary == 'resnet18_mel' else ' was'}
+    chosen after looking at the same test rounds that are reported here. There is no untouched final test set, so its numbers may be slightly optimistic.</li>
   </ul>
-  <p class="caution">A detector score is evidence, not proof. Before publishing the paper, the trained models or derived data, publishing verdicts about
-  named artists, or deploying a public tool, get legal advice: Deezer's method is patent-pending and licensed non-commercially; most datasets are
-  non-commercial or research-only; {n_scraped:,} AI clips were scraped with no clear licence; {n_hist} FMA clips are historic commercial records; the
-  ResNet18 starts from ImageNet-pretrained weights; and calling a real musician "AI" can harm their career.</p>
+  <p class="caution">A detector score is evidence, not proof. Before publishing the paper, the trained models or derived data, or verdicts about
+  named artists, get legal advice. The public website (<a href="{WEBSITE}">{WEBSITE}</a>) went live before that review: for each check it fetches the
+  song's 30-second store preview from Deezer or Apple to a temporary file, which their API terms may not allow, reads titles from Spotify and YouTube
+  pages, and shows the artist's name next to a verdict (details in the model card's legal notes). Other points for the review: Deezer's method is
+  patent-pending and licensed non-commercially; the datasets mix licences, most of them non-commercial, and the Jamendo clips' per-track licences were
+  not recorded; {n_scraped:,} AI clips were scraped with no clear licence; AI generators' own terms (Suno's, for example) restrict using their outputs to
+  train other models; {n_hist} FMA clips are historic commercial records; the ResNet18 starts from ImageNet-pretrained weights; and calling a real
+  musician "AI" can harm their career.</p>
 </section>
 
 <footer>Generated by <code>scripts/make_report.py</code> from the files in <code>results/</code>. Re-run it after any change to the pipeline.</footer>

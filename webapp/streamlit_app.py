@@ -9,11 +9,13 @@ Hugging Face model repository (webapp/upload_model.py) with the token stored as 
 
 Scores audio with predict.py's decoder, excerpt positions and ResNet18; each 10-second excerpt is decoded on
 its own, as the training clips were, so a long upload never sits in memory whole. For links, what is
-analysed is the song's official 30-second preview (see links.py); nothing is stored. When the song found
-for a link is not a confident match, the visitor confirms it before it is scored.
+analysed is the song's official 30-second preview (see links.py). Previews and uploads are written to a
+temporary file for scoring and deleted straight after; nothing is kept. When the song found for a link is
+not a confident match, the visitor confirms it before it is scored.
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import os
@@ -35,7 +37,7 @@ import links  # noqa: E402
 from aimd import MODELS  # noqa: E402
 from aimd.audio import decode_stereo, probe, to_pcm16  # noqa: E402
 from aimd.cnn import MelResNet, logmel  # noqa: E402
-from predict import POSITIONS, SEG, SR, excerpts  # noqa: E402
+from predict import POSITIONS, SEG, SR, excerpts, shown  # noqa: E402
 
 REPO_URL = "https://github.com/samw8/ai-music-detector"
 MODEL_REPO = "norows/ai-music-detector-model"  # private; override with the MODEL_REPO secret
@@ -64,12 +66,19 @@ def _secret(name: str, default: str | None = None) -> str | None:
 def _detector() -> MelResNet:
     """models/resnet18_mel.pt, downloaded from the private model repository when it is not already here.
     The settings file comes first and the weights last, so a half-finished download is retried next time."""
+    if CFG.get("primary", "resnet18_mel") != "resnet18_mel":
+        raise RuntimeError(f"models/config.json names {CFG['primary']} as the main detector; the website only serves the ResNet18")
     pt, settings = MODELS / "resnet18_mel.pt", MODELS / "resnet18_mel.settings.txt"
     if not (pt.exists() and settings.exists()):
         from huggingface_hub import hf_hub_download
 
         for f in (settings, pt):
             hf_hub_download(_secret("MODEL_REPO", MODEL_REPO), f.name, local_dir=MODELS, token=_secret("HF_TOKEN"))
+    want = CFG.get("weights_sha256")
+    if want and hashlib.sha256(pt.read_bytes()).hexdigest() != want:  # a reboot downloads the files again
+        raise RuntimeError("resnet18_mel.pt is not the file models/config.json's results came from: after a retrain, "
+                           "run evaluate, upload the weights (webapp/upload_model.py), push models/config.json, then "
+                           "reboot the app (RESEARCH.md, 'The website')")
     return MelResNet().load(pt)
 
 
@@ -137,12 +146,12 @@ def _card(p: float, parts: list[float], what: str, song_html: str = "") -> str:
 <div class="aimd-card">
   {song_html}
   <div class="aimd-score {cls}">
-    <div class="aimd-num">{p:.2f}</div>
+    <div class="aimd-num">{shown(p, CFG):.2f}</div>
     <div><div class="aimd-verdict">{verdict}</div><div class="aimd-sub">{line}</div></div>
   </div>
   <div class="aimd-bar"><div class="aimd-fill {cls}" style="width:{100 * p:.0f}%"></div>
     <span class="aimd-tick" style="left:{100 * LO:.0f}%"></span><span class="aimd-tick" style="left:{100 * HI:.0f}%"></span></div>
-  <div class="aimd-scale aimd-sub"><span>0 = human</span><span>P(AI)</span><span>1 = AI</span></div>
+  <div class="aimd-scale aimd-sub"><span>0 = human</span><span>uncertain between the marks</span><span>1 = AI</span></div>
   <p class="aimd-small aimd-sub">Analysed: {html.escape(what)}. Scores of the 10-second slices: {", ".join(f"{x:.2f}" for x in parts)}.</p>
   <p class="aimd-small"><b>A score is evidence, not proof.</b> Never use it on its own to say an artist used AI.</p>
   <details><summary>How often is it wrong?</summary><p class="aimd-small aimd-sub">{html.escape(CFG.get("caveat", ""))}</p></details>
@@ -155,7 +164,27 @@ def find_song(text: str) -> links.Match:
     except links.LookupError_ as e:
         raise Problem(str(e)) from None
     except Exception:  # noqa: BLE001 - network trouble with a music service
+        traceback.print_exc()  # the app's logs, not the visitor
         raise Problem("Could not reach the music service just now. Try again, or type 'Artist - Song'.") from None
+
+
+def _score_bytes(audio: bytes, name: str, unreadable: str) -> tuple[float, list[float]]:
+    """Scores audio from a temporary file that is deleted as soon as it has been scored."""
+    try:
+        tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        with tmp:
+            f = Path(tmp.name) / name
+            f.write_bytes(audio)
+            try:
+                return _score(str(f))
+            except Problem:
+                raise
+            except Exception:  # noqa: BLE001
+                traceback.print_exc()
+                raise Problem(unreadable) from None
+    except OSError:  # the server's temporary folder is full or unwritable
+        traceback.print_exc()
+        raise Problem("The server could not save the audio for checking just now. Please try again in a minute.") from None
 
 
 def check_song(m: links.Match) -> str:
@@ -164,18 +193,13 @@ def check_song(m: links.Match) -> str:
     except links.LookupError_ as e:
         raise Problem(str(e)) from None
     except Exception:  # noqa: BLE001
+        traceback.print_exc()
         raise Problem("Could not download that song's preview clip just now. Press Check to try again.") from None
     suffix = ".m4a" if m.preview_from == "Apple" else ".mp3"
-    with tempfile.TemporaryDirectory() as tmp:  # the preview is deleted as soon as it has been scored
-        f = Path(tmp) / f"preview{suffix}"
-        f.write_bytes(audio)
-        try:
-            p, parts = _score(str(f))
-        except Problem:
-            raise
-        except Exception:  # noqa: BLE001
-            raise Problem("Could not read that song's preview clip. Try another link, or upload the audio file.") from None
-    return _card(p, parts, f"the official 30-second preview from {m.preview_from}", _song_html(m))
+    p, parts = _score_bytes(audio, f"preview{suffix}",
+                            "Could not read that song's preview clip. Try another link, or upload the audio file.")
+    source = "Apple (provided courtesy of iTunes)" if m.preview_from == "Apple" else m.preview_from
+    return _card(p, parts, f"the official 30-second preview from {source}", _song_html(m))
 
 
 def check_file(up) -> str:
@@ -184,15 +208,8 @@ def check_file(up) -> str:
     suffix = Path(up.name).suffix.lower()
     if not re.fullmatch(r"\.[a-z0-9]{1,5}", suffix):  # ffmpeg only needs a plausible extension
         suffix = ""
-    with tempfile.TemporaryDirectory() as tmp:  # deleted as soon as it has been scored
-        f = Path(tmp) / f"upload{suffix}"
-        f.write_bytes(up.getvalue())
-        try:
-            p, parts = _score(str(f))
-        except Problem:
-            raise
-        except Exception:  # noqa: BLE001
-            raise Problem("Could not read that file as audio. Try an MP3, WAV, FLAC, M4A or OGG file.") from None
+    p, parts = _score_bytes(up.getvalue(), f"upload{suffix}",
+                            "Could not read that file as audio. Try an MP3, WAV, FLAC, M4A or OGG file.")
     song = f'<div class="aimd-song"><div><div class="aimd-title">{html.escape(up.name)}</div></div></div>'
     return _card(p, parts, "your uploaded file (excerpts from its first 10 minutes)", song)
 
@@ -238,9 +255,15 @@ always tested on artists it never saw, and also on whole music sources and AI ge
 because that is where detectors fail and real musicians get wrongly accused. Full results, methods and limits:
 [GitHub]({REPO_URL}).
 
-**What it is not.** It cannot prove anything about an artist. It is weakest on very old or lo-fi recordings and on
-songs from AI generators it has never seen. Links are matched to the song's 30-second preview, so it does not hear the
-whole song. Nothing you paste or upload is stored.
+**What it is not.** It cannot prove anything about an artist. It is weakest on music unlike what it was trained on
+(it never trained on present-day commercial releases), on very old or lo-fi recordings and on AI generators it has
+never seen; the measured error rates for all four tests are below. Links are matched to the song's 30-second preview,
+so it does not hear the whole song.
+
+**Privacy.** Nothing you paste or upload is saved. Everything you send passes through Streamlit Community Cloud's
+servers; an uploaded file stays in the server's memory only while your page is open, and the copy made for scoring
+is deleted straight after. To find a song, what you type is sent to Deezer and Apple (and, for a link, to Spotify,
+YouTube or the service that made a short link).
 """
 
 st.set_page_config(page_title="Who Gets Called AI", page_icon="🎵", layout="centered")
@@ -298,3 +321,5 @@ with slot:
                 state.result = ("error", str(e))
             st.rerun()
 st.markdown(ABOUT)
+with st.expander("How often is it wrong? (all four tests)"):
+    st.markdown(CFG.get("caveat", "").replace("$", "\\$"))

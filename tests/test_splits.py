@@ -1,5 +1,7 @@
-"""The leakage checks must fail loudly. Run: python -m pytest tests  (or python tests/test_splits.py)."""
+"""The leakage checks must fail loudly. Run: run test  (or python tests/test_splits.py, or pytest if installed)."""
+import json
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -7,7 +9,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from aimd.splits import LeakageError, Round, check_round, make_rounds  # noqa: E402
+import aimd  # noqa: E402
+from aimd.splits import LeakageError, Round, check_round, cross_platform_artist, load_table, make_rounds  # noqa: E402
 
 
 def toy() -> pd.DataFrame:
@@ -67,6 +70,38 @@ def test_held_out_human_source_in_training_fails():
     except LeakageError:
         return
     raise AssertionError("held-out human source in training was not caught")
+
+
+def test_tier_d_never_loaded():
+    rows = [dict(clip_id=f"c{i}", source="suno_dedup", label=1, generator="suno_v4", artist_id=f"suno:u{i}",
+                 track_id=f"suno:t{i}", tier="D" if i % 3 == 0 else "B") for i in range(30)]
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "data").mkdir()
+        pd.DataFrame(rows).to_csv(Path(tmp) / "data" / "manifest.csv", index=False)
+        df = load_table(Path(tmp))
+    assert len(df) == 20 and not (df.tier == "D").any(), "tier-D clips reached the split table"
+
+
+def test_same_artist_name_across_platforms_is_one_group():
+    """The same musician on FMA, MTG-Jamendo and MuseBench's Jamendo set must get one leakage key."""
+    real = aimd.DATA
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "raw" / "fma_train").mkdir(parents=True)
+        (Path(tmp) / "raw" / "fma_train" / "meta.jsonl").write_text(
+            json.dumps({"track_id": "fma:1", "artist_name": "Foo  Bar"}) + "\n", encoding="utf-8")
+        (Path(tmp) / "mtg").mkdir()
+        (Path(tmp) / "mtg" / "raw.meta.tsv").write_text("TRACK_ID\tARTIST_ID\tALBUM_ID\tTRACK_NAME\tARTIST_NAME\n"
+                                                        "track_0000001\tartist_1\talbum_1\tSong\tFOO BAR\n", encoding="utf-8")
+        df = pd.DataFrame(dict(source=["fma_train", "mtg_jamendo", "mb_jamendo", "fma_train"],
+                               track_id=["fma:1", "track_0000001", "mb:9", "fma:2"],
+                               artist_id=["fma:artist:7", "mtg:artist_1", "mb_jamendo_artist:Foo Bar_123456", "fma:artist:8"]))
+        aimd.DATA = Path(tmp)
+        try:
+            keys = cross_platform_artist(df)
+        finally:
+            aimd.DATA = real
+    assert keys.iloc[0] == keys.iloc[1] == keys.iloc[2] == "name:foo bar", list(keys)
+    assert keys.iloc[3] == "fma:artist:8", "a track without a known name must keep its own artist key"
 
 
 if __name__ == "__main__":
